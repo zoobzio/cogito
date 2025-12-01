@@ -1,0 +1,10 @@
+github.com/google/uuid v1.6.0 h1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=
+github.com/google/uuid v1.6.0/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
+github.com/zoobzio/capitan v0.0.8 h1:mSsJv+4+D3Fl4KgQ7xU3SdagHWXV1m/J+BLGcnFc33c=
+github.com/zoobzio/capitan v0.0.8/go.mod h1:/OwNDIB1CHxwSzsF4e48B2+2e/IMIvTb0ZMgVeNyYig=
+github.com/zoobzio/clockz v0.0.2 h1:72E53zhvh8EyxDPEy41CZOYSpSlmt8S+QNdFMVPA1xQ=
+github.com/zoobzio/clockz v0.0.2/go.mod h1:noq8vP/zaqBtSlAQ8Yp9im3afEhFZxYLmxZX53ZilLc=
+github.com/zoobzio/pipz v0.0.19 h1:9ZWDgrIG9CE9BYlNIZXpUzcya5P2Nm1My6VJXhKX2vU=
+github.com/zoobzio/pipz v0.0.19/go.mod h1:Al3a+hx9RoP+DkvKpRQZ7gDZyN/2vfxsXh3gMjBnQXk=
+github.com/zoobzio/sentinel v0.0.6 h1:K6xqs/qelsjC5wGthPzw3cRWjGi0p1mwhh5oSJQT6Ko=
+github.com/zoobzio/sentinel v0.0.6/go.mod h1:1c0vVxUQLFuBrAqMJyvWKWsRW5fp2UT5+jzC9FucUWY=
