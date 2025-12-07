@@ -2,7 +2,6 @@ package cogito
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
@@ -10,26 +9,12 @@ import (
 	"github.com/zoobzio/zyn"
 )
 
-// Test extraction type.
-type TicketData struct {
-	Severity  string `json:"severity"`
-	Component string `json:"component"`
-	UserTier  string `json:"user_tier"`
-}
-
-func (t TicketData) Validate() error {
-	if t.Severity == "" {
-		return fmt.Errorf("severity required")
-	}
-	return nil
-}
-
-// mockAnalyzeProvider implements Provider interface for testing Analyze.
-type mockAnalyzeProvider struct {
+// mockCategorizeProvider implements Provider interface for testing Categorize.
+type mockCategorizeProvider struct {
 	callCount int
 }
 
-func (m *mockAnalyzeProvider) Call(ctx context.Context, messages []zyn.Message, temperature float32) (*zyn.ProviderResponse, error) {
+func (m *mockCategorizeProvider) Call(ctx context.Context, messages []zyn.Message, temperature float32) (*zyn.ProviderResponse, error) {
 	m.callCount++
 
 	if len(messages) == 0 {
@@ -39,10 +24,10 @@ func (m *mockAnalyzeProvider) Call(ctx context.Context, messages []zyn.Message, 
 	// Check last message to determine which synapse is calling
 	lastMessage := messages[len(messages)-1]
 
-	// Transform synapse call - check first since it's more specific
+	// Transform synapse call
 	if strings.Contains(lastMessage.Content, "Transform:") {
 		return &zyn.ProviderResponse{
-			Content: `{"output": "High-severity authentication issue affecting premium user requiring immediate escalation", "confidence": 0.92, "changes": ["Synthesized extraction context"], "reasoning": ["Combined fields with context"]}`,
+			Content: `{"output": "Bug report: authentication failure requiring immediate fix based on user description", "confidence": 0.91, "changes": ["Synthesized classification context"], "reasoning": ["Combined category with original context"]}`,
 			Usage: zyn.TokenUsage{
 				Prompt:     15,
 				Completion: 25,
@@ -51,10 +36,10 @@ func (m *mockAnalyzeProvider) Call(ctx context.Context, messages []zyn.Message, 
 		}, nil
 	}
 
-	// Extract synapse call (Task starts with "Extract ")
-	if strings.Contains(lastMessage.Content, "Task: Extract ") {
+	// Classification synapse call (check for Task prefix which zyn uses)
+	if strings.Contains(lastMessage.Content, "Task:") && !strings.Contains(lastMessage.Content, "Transform") {
 		return &zyn.ProviderResponse{
-			Content: `{"severity": "high", "component": "authentication", "user_tier": "premium"}`,
+			Content: `{"primary": "bug", "secondary": "feature", "confidence": 0.87, "reasoning": ["Login functionality is broken", "Affects core user flow"]}`,
 			Usage: zyn.TokenUsage{
 				Prompt:     10,
 				Completion: 20,
@@ -63,9 +48,9 @@ func (m *mockAnalyzeProvider) Call(ctx context.Context, messages []zyn.Message, 
 		}, nil
 	}
 
-	// Default fallback - return valid extraction for any unmatched case
+	// Default fallback
 	return &zyn.ProviderResponse{
-		Content: `{"severity": "medium", "component": "unknown", "user_tier": "standard"}`,
+		Content: `{"primary": "question", "secondary": "", "confidence": 0.6, "reasoning": ["Unable to determine specific category"]}`,
 		Usage: zyn.TokenUsage{
 			Prompt:     10,
 			Completion: 10,
@@ -74,112 +59,113 @@ func (m *mockAnalyzeProvider) Call(ctx context.Context, messages []zyn.Message, 
 	}, nil
 }
 
-func (m *mockAnalyzeProvider) Name() string {
+func (m *mockCategorizeProvider) Name() string {
 	return "mock"
 }
 
-func TestAnalyzeBasic(t *testing.T) {
-	provider := &mockAnalyzeProvider{}
+func TestCategorizeBasic(t *testing.T) {
+	provider := &mockCategorizeProvider{}
 	SetProvider(provider)
 	defer SetProvider(nil)
 
-	step := NewAnalyze[TicketData]("ticket_data", "ticket metadata")
+	step := NewCategorize("ticket_type", "What type of ticket is this?", []string{"bug", "feature", "question", "documentation"})
 
-	thought := newTestThought("test extraction")
-	thought.SetContent(context.Background(), "ticket_text", "URGENT: Login broken for premium user", "initial")
+	thought := newTestThought("test classification")
+	thought.SetContent(context.Background(), "ticket_text", "Login button doesn't work", "initial")
 
 	result, err := step.Process(context.Background(), thought)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Check main note exists
-	jsonContent, err := result.GetContent("ticket_data")
+	// Use Scan to get typed response
+	resp, err := step.Scan(result)
 	if err != nil {
-		t.Fatalf("ticket_data note not found: %v", err)
+		t.Fatalf("scan failed: %v", err)
 	}
 
-	if jsonContent == "" {
-		t.Error("expected non-empty content")
+	if resp.Primary != "bug" {
+		t.Errorf("expected primary 'bug', got %q", resp.Primary)
 	}
 
-	// Parse JSON to verify structure
-	var ticketData TicketData
-	if err := json.Unmarshal([]byte(jsonContent), &ticketData); err != nil {
-		t.Fatalf("failed to parse extracted JSON: %v", err)
+	if resp.Confidence != 0.87 {
+		t.Errorf("expected confidence 0.87, got %f", resp.Confidence)
 	}
 
-	// Verify extracted fields
-	if ticketData.Severity != "high" {
-		t.Errorf("expected severity 'high', got %q", ticketData.Severity)
+	if resp.Secondary != "feature" {
+		t.Errorf("expected secondary 'feature', got %q", resp.Secondary)
 	}
 
-	if ticketData.Component != "authentication" {
-		t.Errorf("expected component 'authentication', got %q", ticketData.Component)
-	}
-
-	if ticketData.UserTier != "premium" {
-		t.Errorf("expected user_tier 'premium', got %q", ticketData.UserTier)
+	if len(resp.Reasoning) == 0 {
+		t.Error("expected reasoning to be present")
 	}
 }
 
-func TestAnalyzeDefaultNoIntrospection(t *testing.T) {
-	provider := &mockAnalyzeProvider{}
+func TestCategorizeDefaultNoIntrospection(t *testing.T) {
+	provider := &mockCategorizeProvider{}
 	SetProvider(provider)
 	defer SetProvider(nil)
 
-	step := NewAnalyze[TicketData]("ticket_data", "ticket metadata")
+	step := NewCategorize("ticket_type", "What type of ticket is this?", []string{"bug", "feature"})
 
 	thought := newTestThought("test default no introspection")
-	thought.SetContent(context.Background(), "ticket_text", "URGENT: System down", "initial")
+	thought.SetContent(context.Background(), "ticket_text", "Login broken", "initial")
 
 	result, err := step.Process(context.Background(), thought)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Verify extraction exists
-	_, err = result.GetContent("ticket_data")
+	// Use Scan to verify classification
+	resp, err := step.Scan(result)
 	if err != nil {
-		t.Fatalf("ticket_data note not found: %v", err)
+		t.Fatalf("scan failed: %v", err)
+	}
+
+	if resp.Primary != "bug" {
+		t.Errorf("expected primary 'bug', got %q", resp.Primary)
 	}
 
 	// Verify summary note does NOT exist (introspection disabled by default)
-	_, err = result.GetContent("ticket_data_summary")
+	_, err = result.GetContent("ticket_type_summary")
 	if err == nil {
 		t.Error("expected summary note to not exist by default")
 	}
 
-	// Verify mockProvider was called only once (Extract only)
+	// Verify mockProvider was called only once (Classification only)
 	if provider.callCount != 1 {
 		t.Errorf("expected 1 provider call, got %d", provider.callCount)
 	}
 }
 
-func TestAnalyzeWithIntrospection(t *testing.T) {
-	provider := &mockAnalyzeProvider{}
+func TestCategorizeWithIntrospection(t *testing.T) {
+	provider := &mockCategorizeProvider{}
 	SetProvider(provider)
 	defer SetProvider(nil)
 
-	step := NewAnalyze[TicketData]("ticket_data", "ticket metadata").
+	step := NewCategorize("ticket_type", "What type of ticket is this?", []string{"bug", "feature"}).
 		WithIntrospection()
 
 	thought := newTestThought("test with introspection")
-	thought.SetContent(context.Background(), "ticket_text", "URGENT: Login broken for premium user", "initial")
+	thought.SetContent(context.Background(), "ticket_text", "Login broken", "initial")
 
 	result, err := step.Process(context.Background(), thought)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Verify extraction exists
-	_, err = result.GetContent("ticket_data")
+	// Use Scan to verify classification
+	resp, err := step.Scan(result)
 	if err != nil {
-		t.Fatalf("ticket_data note not found: %v", err)
+		t.Fatalf("scan failed: %v", err)
+	}
+
+	if resp.Primary != "bug" {
+		t.Errorf("expected primary 'bug', got %q", resp.Primary)
 	}
 
 	// Verify summary note exists (introspection enabled)
-	summary, err := result.GetContent("ticket_data_summary")
+	summary, err := result.GetContent("ticket_type_summary")
 	if err != nil {
 		t.Fatalf("summary note not found: %v", err)
 	}
@@ -189,27 +175,27 @@ func TestAnalyzeWithIntrospection(t *testing.T) {
 	}
 
 	// Verify it contains semantic context
-	if !strings.Contains(summary, "High-severity") {
+	if !strings.Contains(summary, "Bug") {
 		t.Errorf("expected summary to contain semantic context, got: %q", summary)
 	}
 
-	// Verify mockProvider was called twice (Extract + Transform)
+	// Verify mockProvider was called twice (Classification + Transform)
 	if provider.callCount != 2 {
 		t.Errorf("expected 2 provider calls, got %d", provider.callCount)
 	}
 }
 
-func TestAnalyzeWithSummaryKey(t *testing.T) {
-	provider := &mockAnalyzeProvider{}
+func TestCategorizeWithSummaryKey(t *testing.T) {
+	provider := &mockCategorizeProvider{}
 	SetProvider(provider)
 	defer SetProvider(nil)
 
-	step := NewAnalyze[TicketData]("ticket_data", "ticket metadata").
+	step := NewCategorize("ticket_type", "What type of ticket is this?", []string{"bug", "feature"}).
 		WithIntrospection().
 		WithSummaryKey("context")
 
 	thought := newTestThought("test custom summary key")
-	thought.SetContent(context.Background(), "ticket_text", "URGENT: System down", "initial")
+	thought.SetContent(context.Background(), "ticket_text", "Login broken", "initial")
 
 	result, err := step.Process(context.Background(), thought)
 	if err != nil {
@@ -227,18 +213,18 @@ func TestAnalyzeWithSummaryKey(t *testing.T) {
 	}
 
 	// Verify default summary key does NOT exist
-	_, err = result.GetContent("ticket_data_summary")
+	_, err = result.GetContent("ticket_type_summary")
 	if err == nil {
 		t.Error("expected default summary key to not exist")
 	}
 }
 
-func TestAnalyzeAutoContextAccumulation(t *testing.T) {
-	provider := &mockAnalyzeProvider{}
+func TestCategorizeAutoContextAccumulation(t *testing.T) {
+	provider := &mockCategorizeProvider{}
 	SetProvider(provider)
 	defer SetProvider(nil)
 
-	step := NewAnalyze[TicketData]("ticket_data", "ticket metadata")
+	step := NewCategorize("ticket_type", "What type of ticket is this?", []string{"bug", "feature"})
 
 	thought := newTestThought("test auto-context")
 	// Add multiple notes - all should be sent as context
@@ -251,17 +237,19 @@ func TestAnalyzeAutoContextAccumulation(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Verify extraction was made (means all notes were sent)
-	_, err = result.GetContent("ticket_data")
+	// Verify classification was made (means all notes were sent)
+	_, err = result.GetContent("ticket_type")
 	if err != nil {
-		t.Fatalf("ticket_data note not found: %v", err)
+		t.Fatalf("ticket_type note not found: %v", err)
 	}
 }
 
-func TestAnalyzePublishTracking(t *testing.T) {
-	provider := &mockAnalyzeProvider{}
+func TestCategorizePublishTracking(t *testing.T) {
+	provider := &mockCategorizeProvider{}
 	SetProvider(provider)
 	defer SetProvider(nil)
+
+	step := NewCategorize("result", "What is this?", []string{"a", "b"})
 
 	thought := newTestThought("test publish tracking")
 	thought.SetContent(context.Background(), "note1", "First", "initial")
@@ -274,7 +262,6 @@ func TestAnalyzePublishTracking(t *testing.T) {
 	}
 
 	// Run step - should publish all notes including the result
-	step := NewAnalyze[TicketData]("result", "ticket metadata")
 	result, err := step.Process(context.Background(), thought)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -299,30 +286,34 @@ func TestAnalyzePublishTracking(t *testing.T) {
 	}
 }
 
-func TestAnalyzeBuilderComposition(t *testing.T) {
-	provider := &mockAnalyzeProvider{}
+func TestCategorizeBuilderComposition(t *testing.T) {
+	provider := &mockCategorizeProvider{}
 	SetProvider(provider)
 	defer SetProvider(nil)
 
 	// Chain multiple builder methods
-	step := NewAnalyze[TicketData]("ticket_data", "ticket metadata").
+	step := NewCategorize("ticket_type", "What type of ticket is this?", []string{"bug", "feature"}).
 		WithIntrospection().
 		WithSummaryKey("context").
-		WithReasoningTemperature(0.1).
+		WithReasoningTemperature(0.3).
 		WithIntrospectionTemperature(0.8)
 
 	thought := newTestThought("test builder composition")
-	thought.SetContent(context.Background(), "ticket_text", "URGENT: System down", "initial")
+	thought.SetContent(context.Background(), "ticket_text", "Login broken", "initial")
 
 	result, err := step.Process(context.Background(), thought)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Verify extraction exists
-	_, err = result.GetContent("ticket_data")
+	// Use Scan to verify classification
+	resp, err := step.Scan(result)
 	if err != nil {
-		t.Fatalf("ticket_data note not found: %v", err)
+		t.Fatalf("scan failed: %v", err)
+	}
+
+	if resp.Primary != "bug" {
+		t.Errorf("expected primary 'bug', got %q", resp.Primary)
 	}
 
 	// Verify custom summary key

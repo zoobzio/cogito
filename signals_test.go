@@ -7,164 +7,179 @@ import (
 	"time"
 
 	"github.com/zoobzio/capitan"
+	capitantesting "github.com/zoobzio/capitan/testing"
 	"github.com/zoobzio/zyn"
 )
 
+// getStringField extracts a string field value from a captured event.
+func getStringField(event capitantesting.CapturedEvent, keyName string) string {
+	for _, f := range event.Fields {
+		if f.Key().Name() == keyName {
+			if v, ok := f.Value().(string); ok {
+				return v
+			}
+		}
+	}
+	return ""
+}
+
 // TestThoughtCreatedEvent verifies ThoughtCreated signal emission.
 func TestThoughtCreatedEvent(t *testing.T) {
-	var mu sync.Mutex
-	var receivedEvents []*capitan.Event
-
-	// Hook listener to capture events
-	listener := capitan.Hook(ThoughtCreated, func(ctx context.Context, e *capitan.Event) {
-		mu.Lock()
-		receivedEvents = append(receivedEvents, e)
-		mu.Unlock()
-	})
+	capture := capitantesting.NewEventCapture()
+	listener := capitan.Hook(ThoughtCreated, capture.Handler())
 	defer listener.Close()
 
-	// Create thought
-	thought := New("test intent")
+	thought := newTestThought("test intent")
 
-	// Give async event processing time to complete
-	time.Sleep(10 * time.Millisecond)
-
-	mu.Lock()
-	defer mu.Unlock()
-
-	if len(receivedEvents) != 1 {
-		t.Fatalf("expected 1 ThoughtCreated event, got %d", len(receivedEvents))
+	if !capture.WaitForCount(1, time.Second) {
+		t.Fatal("expected ThoughtCreated event")
 	}
 
-	event := receivedEvents[0]
+	events := capture.Events()
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(events))
+	}
 
-	// Verify fields
-	intent, ok := FieldIntent.From(event)
-	if !ok || intent != "test intent" {
+	intent := getStringField(events[0], FieldIntent.Name())
+	if intent != "test intent" {
 		t.Errorf("expected intent 'test intent', got %q", intent)
 	}
 
-	traceID, ok := FieldTraceID.From(event)
-	if !ok || traceID != thought.TraceID {
+	traceID := getStringField(events[0], FieldTraceID.Name())
+	if traceID != thought.TraceID {
 		t.Errorf("expected trace_id %q, got %q", thought.TraceID, traceID)
 	}
 }
 
 // TestNoteAddedEvent verifies NoteAdded signal emission.
 func TestNoteAddedEvent(t *testing.T) {
-	var mu sync.Mutex
-	var receivedEvents []*capitan.Event
+	type noteData struct {
+		key         string
+		source      string
+		count       int
+		contentSize int
+	}
 
-	listener := capitan.Hook(NoteAdded, func(ctx context.Context, e *capitan.Event) {
+	var mu sync.Mutex
+	var events []noteData
+
+	listener := capitan.Hook(NoteAdded, func(_ context.Context, e *capitan.Event) {
+		key, _ := FieldNoteKey.From(e)
+		source, _ := FieldNoteSource.From(e)
+		count, _ := FieldNoteCount.From(e)
+		contentSize, _ := FieldContentSize.From(e)
 		mu.Lock()
-		receivedEvents = append(receivedEvents, e)
+		events = append(events, noteData{key, source, count, contentSize})
 		mu.Unlock()
 	})
 	defer listener.Close()
 
-	thought := New("test")
+	thought := newTestThought("test")
+	thought.SetContent(context.Background(), "key1", "value1", "source1")
+	thought.SetContent(context.Background(), "key2", "value2", "source2")
 
-	// Add notes
-	thought.SetContent("key1", "value1", "source1")
-	thought.SetContent("key2", "value2", "source2")
-
-	time.Sleep(10 * time.Millisecond)
+	// Wait for events.
+	deadline := time.Now().Add(time.Second)
+	for {
+		mu.Lock()
+		count := len(events)
+		mu.Unlock()
+		if count >= 2 || time.Now().After(deadline) {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
 
 	mu.Lock()
 	defer mu.Unlock()
 
-	if len(receivedEvents) != 2 {
-		t.Fatalf("expected 2 NoteAdded events, got %d", len(receivedEvents))
+	if len(events) != 2 {
+		t.Fatalf("expected 2 NoteAdded events, got %d", len(events))
 	}
 
-	// Verify first event
-	event1 := receivedEvents[0]
-	key1, ok := FieldNoteKey.From(event1)
-	if !ok || key1 != "key1" {
-		t.Errorf("expected note_key 'key1', got %q", key1)
+	if events[0].key != "key1" {
+		t.Errorf("expected note_key 'key1', got %q", events[0].key)
+	}
+	if events[0].source != "source1" {
+		t.Errorf("expected note_source 'source1', got %q", events[0].source)
+	}
+	if events[0].count != 1 {
+		t.Errorf("expected note_count 1, got %d", events[0].count)
+	}
+	if events[0].contentSize != len("value1") {
+		t.Errorf("expected content_size %d, got %d", len("value1"), events[0].contentSize)
 	}
 
-	source1, ok := FieldNoteSource.From(event1)
-	if !ok || source1 != "source1" {
-		t.Errorf("expected note_source 'source1', got %q", source1)
-	}
-
-	count1, ok := FieldNoteCount.From(event1)
-	if !ok || count1 != 1 {
-		t.Errorf("expected note_count 1, got %d", count1)
-	}
-
-	contentSize1, ok := FieldContentSize.From(event1)
-	if !ok || contentSize1 != len("value1") {
-		t.Errorf("expected content_size %d, got %d", len("value1"), contentSize1)
-	}
-
-	// Verify second event
-	event2 := receivedEvents[1]
-	count2, ok := FieldNoteCount.From(event2)
-	if !ok || count2 != 2 {
-		t.Errorf("expected note_count 2, got %d", count2)
+	if events[1].count != 2 {
+		t.Errorf("expected note_count 2, got %d", events[1].count)
 	}
 }
 
 // TestNotesPublishedEvent verifies NotesPublished signal emission.
 func TestNotesPublishedEvent(t *testing.T) {
-	var mu sync.Mutex
-	var receivedEvents []*capitan.Event
+	type publishedData struct {
+		publishedCount   int
+		unpublishedCount int
+	}
 
-	listener := capitan.Hook(NotesPublished, func(ctx context.Context, e *capitan.Event) {
+	var mu sync.Mutex
+	var received *publishedData
+
+	listener := capitan.Hook(NotesPublished, func(_ context.Context, e *capitan.Event) {
+		pub, _ := FieldPublishedCount.From(e)
+		unpub, _ := FieldUnpublishedCount.From(e)
 		mu.Lock()
-		receivedEvents = append(receivedEvents, e)
+		received = &publishedData{pub, unpub}
 		mu.Unlock()
 	})
 	defer listener.Close()
 
-	thought := New("test")
-	thought.SetContent("key1", "value1", "source1")
-	thought.SetContent("key2", "value2", "source2")
-
-	// Mark published
+	thought := newTestThought("test")
+	thought.SetContent(context.Background(), "key1", "value1", "source1")
+	thought.SetContent(context.Background(), "key2", "value2", "source2")
 	thought.MarkNotesPublished()
 
-	time.Sleep(10 * time.Millisecond)
+	// Wait for event.
+	deadline := time.Now().Add(time.Second)
+	for {
+		mu.Lock()
+		got := received != nil
+		mu.Unlock()
+		if got || time.Now().After(deadline) {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
 
 	mu.Lock()
 	defer mu.Unlock()
 
-	if len(receivedEvents) != 1 {
-		t.Fatalf("expected 1 NotesPublished event, got %d", len(receivedEvents))
+	if received == nil {
+		t.Fatal("expected NotesPublished event")
 	}
 
-	event := receivedEvents[0]
-
-	publishedCount, ok := FieldPublishedCount.From(event)
-	if !ok || publishedCount != 2 {
-		t.Errorf("expected published_count 2, got %d", publishedCount)
+	if received.publishedCount != 2 {
+		t.Errorf("expected published_count 2, got %d", received.publishedCount)
 	}
-
-	unpublishedCount, ok := FieldUnpublishedCount.From(event)
-	if !ok || unpublishedCount != 2 {
-		t.Errorf("expected unpublished_count 2, got %d", unpublishedCount)
+	if received.unpublishedCount != 2 {
+		t.Errorf("expected unpublished_count 2, got %d", received.unpublishedCount)
 	}
 }
 
-// mockTestProvider implements Provider interface for signal tests
+// mockTestProvider implements Provider interface for signal tests.
 type mockTestProvider struct {
 	callCount int
 }
 
-func (m *mockTestProvider) Call(ctx context.Context, messages []zyn.Message, temperature float32) (*zyn.ProviderResponse, error) {
+func (m *mockTestProvider) Call(_ context.Context, messages []zyn.Message, _ float32) (*zyn.ProviderResponse, error) {
 	m.callCount++
 
 	if len(messages) == 0 {
 		return nil, context.DeadlineExceeded
 	}
 
-	// Check if this looks like a Transform call by inspecting message structure
-	// Transform calls have specific formatting in their messages
 	lastMessage := messages[len(messages)-1]
 	if m.callCount > 1 || len(lastMessage.Content) > 200 {
-		// This is likely the Transform synapse (second call or longer content)
 		return &zyn.ProviderResponse{
 			Content: `{"output": "Synthesized context for test decision", "confidence": 0.92, "changes": ["Synthesized decision context"], "reasoning": ["Combined decision with original context"]}`,
 			Usage: zyn.TokenUsage{
@@ -175,7 +190,6 @@ func (m *mockTestProvider) Call(ctx context.Context, messages []zyn.Message, tem
 		}, nil
 	}
 
-	// Binary synapse call (first call, shorter content)
 	return &zyn.ProviderResponse{
 		Content: `{"decision": true, "confidence": 0.95, "reasoning": ["test reason"]}`,
 		Usage: zyn.TokenUsage{
@@ -192,146 +206,146 @@ func (m *mockTestProvider) Name() string {
 
 // TestStepEvents verifies step lifecycle events.
 func TestStepEvents(t *testing.T) {
-	var mu sync.Mutex
-	var startedEvents []*capitan.Event
-	var completedEvents []*capitan.Event
+	type stepData struct {
+		name     string
+		stepType string
+		traceID  string
+		duration time.Duration
+		count    int
+	}
 
-	startListener := capitan.Hook(StepStarted, func(ctx context.Context, e *capitan.Event) {
+	var mu sync.Mutex
+	var started, completed *stepData
+
+	startListener := capitan.Hook(StepStarted, func(_ context.Context, e *capitan.Event) {
+		name, _ := FieldStepName.From(e)
+		stype, _ := FieldStepType.From(e)
+		trace, _ := FieldTraceID.From(e)
 		mu.Lock()
-		startedEvents = append(startedEvents, e)
+		started = &stepData{name: name, stepType: stype, traceID: trace}
 		mu.Unlock()
 	})
 	defer startListener.Close()
 
-	completedListener := capitan.Hook(StepCompleted, func(ctx context.Context, e *capitan.Event) {
+	completedListener := capitan.Hook(StepCompleted, func(_ context.Context, e *capitan.Event) {
+		dur, _ := FieldStepDuration.From(e)
+		count, _ := FieldNoteCount.From(e)
 		mu.Lock()
-		completedEvents = append(completedEvents, e)
+		completed = &stepData{duration: dur, count: count}
 		mu.Unlock()
 	})
 	defer completedListener.Close()
 
-	// Mock provider
 	provider := &mockTestProvider{}
+	thought := newTestThought("test decision")
+	thought.SetContent(context.Background(), "input", "test input", "test")
 
-	// Create and execute a decision step
-	thought := New("test decision")
-	thought.SetContent("input", "test input", "test")
-
-	// Disable introspection to avoid Transform synapse complexity
-	step := Decide("test_decision", "Is this a test?").
-		WithProvider(provider).
-		WithoutIntrospection()
+	step := NewDecide("test_decision", "Is this a test?").WithProvider(provider)
 	result, err := step.Process(context.Background(), thought)
 	if err != nil {
 		t.Fatalf("step execution failed: %v", err)
 	}
 
-	time.Sleep(10 * time.Millisecond)
+	// Wait for events.
+	deadline := time.Now().Add(time.Second)
+	for {
+		mu.Lock()
+		gotBoth := started != nil && completed != nil
+		mu.Unlock()
+		if gotBoth || time.Now().After(deadline) {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
 
 	mu.Lock()
 	defer mu.Unlock()
 
-	// Verify started event
-	if len(startedEvents) != 1 {
-		t.Fatalf("expected 1 StepStarted event, got %d", len(startedEvents))
+	if started == nil {
+		t.Fatal("expected StepStarted event")
+	}
+	if started.name != "test_decision" {
+		t.Errorf("expected step_name 'test_decision', got %q", started.name)
+	}
+	if started.stepType != "decide" {
+		t.Errorf("expected step_type 'decide', got %q", started.stepType)
+	}
+	if started.traceID != thought.TraceID {
+		t.Errorf("trace_id mismatch: expected %q, got %q", thought.TraceID, started.traceID)
 	}
 
-	startEvent := startedEvents[0]
-	stepName, ok := FieldStepName.From(startEvent)
-	if !ok || stepName != "test_decision" {
-		t.Errorf("expected step_name 'test_decision', got %q", stepName)
+	if completed == nil {
+		t.Fatal("expected StepCompleted event")
 	}
-
-	stepType, ok := FieldStepType.From(startEvent)
-	if !ok || stepType != "decide" {
-		t.Errorf("expected step_type 'decide', got %q", stepType)
+	if completed.duration <= 0 {
+		t.Errorf("expected positive duration, got %v", completed.duration)
 	}
-
-	traceID, ok := FieldTraceID.From(startEvent)
-	if !ok || traceID != thought.TraceID {
-		t.Errorf("trace_id mismatch: expected %q, got %q", thought.TraceID, traceID)
-	}
-
-	// Verify completed event
-	if len(completedEvents) != 1 {
-		t.Fatalf("expected 1 StepCompleted event, got %d", len(completedEvents))
-	}
-
-	completedEvent := completedEvents[0]
-	duration, ok := FieldStepDuration.From(completedEvent)
-	if !ok || duration <= 0 {
-		t.Errorf("expected positive duration, got %v", duration)
-	}
-
-	noteCount, ok := FieldNoteCount.From(completedEvent)
-	if !ok || noteCount != len(result.AllNotes()) {
-		t.Errorf("expected note_count %d, got %d", len(result.AllNotes()), noteCount)
+	if completed.count != len(result.AllNotes()) {
+		t.Errorf("expected note_count %d, got %d", len(result.AllNotes()), completed.count)
 	}
 }
 
 // TestIntrospectionEvents verifies introspection lifecycle events.
 func TestIntrospectionEvents(t *testing.T) {
+	type introData struct {
+		contextSize int
+		stepType    string
+	}
+
 	var mu sync.Mutex
-	var startedEvents []*capitan.Event
-	var completedEvents []*capitan.Event
+	var completed *introData
 
-	startListener := capitan.Hook(IntrospectionStarted, func(ctx context.Context, e *capitan.Event) {
+	listener := capitan.Hook(IntrospectionCompleted, func(_ context.Context, e *capitan.Event) {
+		size, _ := FieldContextSize.From(e)
+		stype, _ := FieldStepType.From(e)
 		mu.Lock()
-		startedEvents = append(startedEvents, e)
+		completed = &introData{size, stype}
 		mu.Unlock()
 	})
-	defer startListener.Close()
+	defer listener.Close()
 
-	completedListener := capitan.Hook(IntrospectionCompleted, func(ctx context.Context, e *capitan.Event) {
-		mu.Lock()
-		completedEvents = append(completedEvents, e)
-		mu.Unlock()
-	})
-	defer completedListener.Close()
-
-	// Mock provider
 	provider := &mockTestProvider{}
+	thought := newTestThought("test introspection")
+	thought.SetContent(context.Background(), "input", "test input", "test")
 
-	// Create step with introspection enabled (default)
-	thought := New("test introspection")
-	thought.SetContent("input", "test input", "test")
-
-	step := Decide("test_decision", "Is this a test?").WithProvider(provider)
+	step := NewDecide("test_decision", "Is this a test?").
+		WithProvider(provider).
+		WithIntrospection()
 	_, err := step.Process(context.Background(), thought)
 	if err != nil {
 		t.Fatalf("step execution failed: %v", err)
 	}
 
-	time.Sleep(10 * time.Millisecond)
+	// Wait for event.
+	deadline := time.Now().Add(time.Second)
+	for {
+		mu.Lock()
+		got := completed != nil
+		mu.Unlock()
+		if got || time.Now().After(deadline) {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
 
 	mu.Lock()
 	defer mu.Unlock()
 
-	// Verify introspection events were emitted
-	if len(startedEvents) != 1 {
-		t.Fatalf("expected 1 IntrospectionStarted event, got %d", len(startedEvents))
+	if completed == nil {
+		t.Fatal("expected IntrospectionCompleted event")
 	}
-
-	if len(completedEvents) != 1 {
-		t.Fatalf("expected 1 IntrospectionCompleted event, got %d", len(completedEvents))
+	if completed.contextSize <= 0 {
+		t.Errorf("expected positive context_size, got %d", completed.contextSize)
 	}
-
-	completedEvent := completedEvents[0]
-	contextSize, ok := FieldContextSize.From(completedEvent)
-	if !ok || contextSize <= 0 {
-		t.Errorf("expected positive context_size, got %d", contextSize)
-	}
-
-	stepType, ok := FieldStepType.From(completedEvent)
-	if !ok || stepType != "decide" {
-		t.Errorf("expected step_type 'decide', got %q", stepType)
+	if completed.stepType != "decide" {
+		t.Errorf("expected step_type 'decide', got %q", completed.stepType)
 	}
 }
 
-// mockFailingProvider implements Provider interface that always fails
+// mockFailingProvider implements Provider interface that always fails.
 type mockFailingProvider struct{}
 
-func (m *mockFailingProvider) Call(ctx context.Context, messages []zyn.Message, temperature float32) (*zyn.ProviderResponse, error) {
+func (m *mockFailingProvider) Call(_ context.Context, _ []zyn.Message, _ float32) (*zyn.ProviderResponse, error) {
 	return nil, context.DeadlineExceeded
 }
 
@@ -341,44 +355,53 @@ func (m *mockFailingProvider) Name() string {
 
 // TestStepFailedEvent verifies error handling emits failure events.
 func TestStepFailedEvent(t *testing.T) {
-	var mu sync.Mutex
-	var failedEvents []*capitan.Event
+	type failData struct {
+		err      error
+		severity capitan.Severity
+	}
 
-	listener := capitan.Hook(StepFailed, func(ctx context.Context, e *capitan.Event) {
+	var mu sync.Mutex
+	var failed *failData
+
+	listener := capitan.Hook(StepFailed, func(_ context.Context, e *capitan.Event) {
+		stepErr, _ := FieldError.From(e)
 		mu.Lock()
-		failedEvents = append(failedEvents, e)
+		failed = &failData{err: stepErr, severity: e.Severity()}
 		mu.Unlock()
 	})
 	defer listener.Close()
 
-	// Mock provider that returns an error
 	provider := &mockFailingProvider{}
-
-	thought := New("test failure")
-	step := Decide("test_decision", "Will this fail?").WithProvider(provider)
+	thought := newTestThought("test failure")
+	step := NewDecide("test_decision", "Will this fail?").WithProvider(provider)
 	_, err := step.Process(context.Background(), thought)
 	if err == nil {
 		t.Fatal("expected step to fail, but it succeeded")
 	}
 
-	time.Sleep(10 * time.Millisecond)
+	// Wait for event.
+	deadline := time.Now().Add(time.Second)
+	for {
+		mu.Lock()
+		got := failed != nil
+		mu.Unlock()
+		if got || time.Now().After(deadline) {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
 
 	mu.Lock()
 	defer mu.Unlock()
 
-	if len(failedEvents) != 1 {
-		t.Fatalf("expected 1 StepFailed event, got %d", len(failedEvents))
+	if failed == nil {
+		t.Fatal("expected StepFailed event")
 	}
-
-	event := failedEvents[0]
-	stepError, ok := FieldError.From(event)
-	if !ok || stepError == nil {
+	if failed.err == nil {
 		t.Error("expected error field to be present")
 	}
-
-	// Verify it's an Error severity event
-	if event.Severity() != capitan.SeverityError {
-		t.Errorf("expected Error severity, got %v", event.Severity())
+	if failed.severity != capitan.SeverityError {
+		t.Errorf("expected Error severity, got %v", failed.severity)
 	}
 }
 
@@ -387,20 +410,17 @@ func TestEventTraceIDCorrelation(t *testing.T) {
 	var mu sync.Mutex
 	traceIDs := make(map[string]int)
 
-	// Hook all cogito signals
 	signals := []capitan.Signal{
 		ThoughtCreated,
 		NoteAdded,
 		NotesPublished,
 		StepStarted,
 		StepCompleted,
-		IntrospectionStarted,
-		IntrospectionCompleted,
 	}
 
-	var listeners []*capitan.Listener
+	listeners := make([]*capitan.Listener, 0, len(signals))
 	for _, sig := range signals {
-		listener := capitan.Hook(sig, func(ctx context.Context, e *capitan.Event) {
+		listener := capitan.Hook(sig, func(_ context.Context, e *capitan.Event) {
 			if traceID, ok := FieldTraceID.From(e); ok {
 				mu.Lock()
 				traceIDs[traceID]++
@@ -415,35 +435,40 @@ func TestEventTraceIDCorrelation(t *testing.T) {
 		}
 	}()
 
-	// Execute a complete reasoning flow
 	provider := &mockTestProvider{}
+	thought := newTestThought("correlation test")
+	thought.SetContent(context.Background(), "input", "test", "test")
 
-	thought := New("correlation test")
-	thought.SetContent("input", "test", "test")
-
-	// Disable introspection to avoid Transform synapse complexity
-	step := Decide("decision", "test?").
-		WithProvider(provider).
-		WithoutIntrospection()
+	step := NewDecide("decision", "test?").WithProvider(provider)
 	result, err := step.Process(context.Background(), thought)
 	if err != nil {
 		t.Fatalf("step failed: %v", err)
 	}
-
 	result.MarkNotesPublished()
 
-	time.Sleep(20 * time.Millisecond)
+	// Wait for events (expect at least 5: thought created, note added, step started, step completed, notes published).
+	deadline := time.Now().Add(time.Second)
+	for {
+		mu.Lock()
+		total := 0
+		for _, count := range traceIDs {
+			total += count
+		}
+		mu.Unlock()
+		if total >= 5 || time.Now().After(deadline) {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
 
 	mu.Lock()
 	defer mu.Unlock()
 
-	// All events should have the same trace ID
 	if len(traceIDs) != 1 {
 		t.Errorf("expected all events to share one trace ID, got %d unique trace IDs: %v",
 			len(traceIDs), traceIDs)
 	}
 
-	// Verify it's the thought's trace ID
 	for traceID := range traceIDs {
 		if traceID != thought.TraceID {
 			t.Errorf("event trace_id %q doesn't match thought trace_id %q",

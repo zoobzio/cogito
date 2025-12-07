@@ -15,12 +15,12 @@ type Provider interface {
 	Name() string
 }
 
-// Context key for provider
+// Context key for provider.
 type providerKeyType struct{}
 
 var providerKey = providerKeyType{}
 
-// Global provider fallback
+// Global provider fallback.
 var (
 	globalProvider   Provider
 	globalProviderMu sync.RWMutex
@@ -60,7 +60,7 @@ func ProviderFromContext(ctx context.Context) (Provider, bool) {
 // 1. Step-level provider (passed as argument)
 // 2. Context provider
 // 3. Global provider
-// 4. Error if none found
+// 4. Error if none found.
 func ResolveProvider(ctx context.Context, stepProvider Provider) (Provider, error) {
 	// 1. Step-level provider takes highest priority
 	if stepProvider != nil {

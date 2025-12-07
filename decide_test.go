@@ -9,8 +9,8 @@ import (
 	"github.com/zoobzio/zyn"
 )
 
-// mockProvider implements Provider interface for testing
-// It handles both Binary and Transform synapse calls based on message content
+// mockDecideProvider implements Provider interface for testing.
+// It handles both Binary and Transform synapse calls based on message content.
 type mockDecideProvider struct {
 	callCount int
 }
@@ -72,11 +72,11 @@ func TestDecideBasic(t *testing.T) {
 	defer SetProvider(nil)
 
 	// Create a Decide step (no inputKey anymore)
-	step := Decide("is_urgent", "Is this urgent?")
+	step := NewDecide("is_urgent", "Is this urgent?")
 
 	// Create thought with input
-	thought := New("test decision")
-	thought.SetContent("input_text", "URGENT: System is down!", "initial")
+	thought := newTestThought("test decision")
+	thought.SetContent(context.Background(), "input_text", "URGENT: System is down!", "initial")
 
 	// Process
 	result, err := step.Process(context.Background(), thought)
@@ -85,59 +85,53 @@ func TestDecideBasic(t *testing.T) {
 	}
 
 	// Check decision note was written
-	decision, err := result.GetContent("is_urgent")
+	_, err = result.GetContent("is_urgent")
 	if err != nil {
 		t.Fatalf("decision note not found: %v", err)
 	}
 
-	if decision != "true" {
-		t.Errorf("expected decision 'true', got %q", decision)
+	// Use Scan to get typed response
+	resp, err := step.Scan(result)
+	if err != nil {
+		t.Fatalf("scan failed: %v", err)
 	}
 
-	// Check metadata
-	note, ok := result.GetNote("is_urgent")
-	if !ok {
-		t.Fatal("note not found")
+	if !resp.Decision {
+		t.Error("expected decision true")
 	}
 
-	confidence, ok := note.Metadata["confidence"]
-	if !ok {
-		t.Error("confidence metadata not found")
+	if resp.Confidence != 0.95 {
+		t.Errorf("expected confidence 0.95, got %f", resp.Confidence)
 	}
 
-	if confidence != "0.95" {
-		t.Errorf("expected confidence '0.95', got %q", confidence)
-	}
-
-	// Check reasoning was captured
-	if _, ok := note.Metadata["reasoning_0"]; !ok {
-		t.Error("reasoning not captured in metadata")
+	if len(resp.Reasoning) == 0 {
+		t.Error("expected reasoning to be present")
 	}
 }
 
-func TestDecideGetBool(t *testing.T) {
+func TestDecideScan(t *testing.T) {
 	provider := &mockDecideProvider{}
 	SetProvider(provider)
 	defer SetProvider(nil)
 
-	step := Decide("is_urgent", "Is this urgent?")
+	step := NewDecide("is_urgent", "Is this urgent?")
 
-	thought := New("test decision")
-	thought.SetContent("input_text", "URGENT: System is down!", "initial")
+	thought := newTestThought("test decision")
+	thought.SetContent(context.Background(), "input_text", "URGENT: System is down!", "initial")
 
 	result, err := step.Process(context.Background(), thought)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Use GetBool helper
-	isUrgent, err := result.GetBool("is_urgent")
+	// Use Scan to get typed response
+	resp, err := step.Scan(result)
 	if err != nil {
-		t.Fatalf("GetBool failed: %v", err)
+		t.Fatalf("Scan failed: %v", err)
 	}
 
-	if !isUrgent {
-		t.Error("expected true from GetBool")
+	if !resp.Decision {
+		t.Error("expected decision true")
 	}
 }
 
@@ -146,13 +140,13 @@ func TestDecideAutoContextAccumulation(t *testing.T) {
 	SetProvider(provider)
 	defer SetProvider(nil)
 
-	step := Decide("is_urgent", "Is this urgent?")
+	step := NewDecide("is_urgent", "Is this urgent?")
 
-	thought := New("test auto-context")
+	thought := newTestThought("test auto-context")
 	// Add multiple notes - all should be sent as context
-	thought.SetContent("ticket_text", "System is broken", "initial")
-	thought.SetContent("user_tier", "premium", "initial")
-	thought.SetContent("time_of_day", "3am", "initial")
+	thought.SetContent(context.Background(), "ticket_text", "System is broken", "initial")
+	thought.SetContent(context.Background(), "user_tier", "premium", "initial")
+	thought.SetContent(context.Background(), "time_of_day", "3am", "initial")
 
 	result, err := step.Process(context.Background(), thought)
 	if err != nil {
@@ -171,11 +165,11 @@ func TestDecideSessionAccumulation(t *testing.T) {
 	SetProvider(provider)
 	defer SetProvider(nil)
 
-	thought := New("test session accumulation")
-	thought.SetContent("input1", "First message", "initial")
+	thought := newTestThought("test session accumulation")
+	thought.SetContent(context.Background(), "input1", "First message", "initial")
 
 	// Run first step
-	step1 := Decide("result1", "Is this the first?")
+	step1 := NewDecide("result1", "Is this the first?")
 	result, err := step1.Process(context.Background(), thought)
 	if err != nil {
 		t.Fatalf("step1 error: %v", err)
@@ -189,9 +183,9 @@ func TestDecideSessionAccumulation(t *testing.T) {
 	initialLen := result.Session.Len()
 
 	// Add more notes for second step
-	result.SetContent("input2", "Second message", "initial")
+	result.SetContent(context.Background(), "input2", "Second message", "initial")
 
-	step2 := Decide("result2", "Is this the second?")
+	step2 := NewDecide("result2", "Is this the second?")
 	result, err = step2.Process(context.Background(), result)
 	if err != nil {
 		t.Fatalf("step2 error: %v", err)
@@ -203,68 +197,6 @@ func TestDecideSessionAccumulation(t *testing.T) {
 	}
 }
 
-func TestDecideStepRecord(t *testing.T) {
-	provider := &mockDecideProvider{}
-	SetProvider(provider)
-	defer SetProvider(nil)
-
-	step := Decide("is_urgent", "Is this urgent?")
-
-	thought := New("test step recording")
-	thought.SetContent("input_text", "Test input", "initial")
-
-	result, err := step.Process(context.Background(), thought)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	// Check step was recorded
-	if len(result.Steps) == 0 {
-		t.Fatal("expected step record to be added")
-	}
-
-	step1 := result.Steps[0]
-	if step1.Name != "is_urgent" {
-		t.Errorf("expected step name 'is_urgent', got %q", step1.Name)
-	}
-
-	if step1.Type != "decide" {
-		t.Errorf("expected step type 'decide', got %q", step1.Type)
-	}
-
-	if step1.Duration == 0 {
-		t.Error("expected non-zero duration")
-	}
-}
-
-func TestDecideWithRetry(t *testing.T) {
-	provider := &mockDecideProvider{}
-	SetProvider(provider)
-	defer SetProvider(nil)
-
-	// Create step with retry wrapper
-	step := Decide("is_urgent", "Is this urgent?").
-		WithRetry(3)
-
-	thought := New("test with retry")
-	thought.SetContent("input_text", "Test input", "initial")
-
-	result, err := step.Process(context.Background(), thought)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	// Should still work with retry wrapper
-	decision, err := result.GetContent("is_urgent")
-	if err != nil {
-		t.Fatalf("decision not found: %v", err)
-	}
-
-	if decision != "true" {
-		t.Errorf("expected 'true', got %q", decision)
-	}
-}
-
 func TestDecideProviderResolution(t *testing.T) {
 	// Test that step-level provider takes precedence
 	globalProvider := &mockDecideProvider{}
@@ -272,11 +204,11 @@ func TestDecideProviderResolution(t *testing.T) {
 	defer SetProvider(nil)
 
 	stepProvider := &mockDecideProvider{}
-	step := Decide("is_urgent", "Is this urgent?").
+	step := NewDecide("is_urgent", "Is this urgent?").
 		WithProvider(stepProvider)
 
-	thought := New("test provider resolution")
-	thought.SetContent("input_text", "Test input", "initial")
+	thought := newTestThought("test provider resolution")
+	thought.SetContent(context.Background(), "input_text", "Test input", "initial")
 
 	result, err := step.Process(context.Background(), thought)
 	if err != nil {
@@ -295,9 +227,9 @@ func TestDecidePublishTracking(t *testing.T) {
 	SetProvider(provider)
 	defer SetProvider(nil)
 
-	thought := New("test publish tracking")
-	thought.SetContent("note1", "First", "initial")
-	thought.SetContent("note2", "Second", "initial")
+	thought := newTestThought("test publish tracking")
+	thought.SetContent(context.Background(), "note1", "First", "initial")
+	thought.SetContent(context.Background(), "note2", "Second", "initial")
 
 	// Initially nothing published
 	unpublished := thought.GetUnpublishedNotes()
@@ -306,7 +238,7 @@ func TestDecidePublishTracking(t *testing.T) {
 	}
 
 	// Run step - should publish all notes including the result
-	step := Decide("result", "Is this good?")
+	step := NewDecide("result", "Is this good?")
 	result, err := step.Process(context.Background(), thought)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -319,7 +251,7 @@ func TestDecidePublishTracking(t *testing.T) {
 	}
 
 	// Add another note - this should be unpublished
-	result.SetContent("note3", "Third", "custom")
+	result.SetContent(context.Background(), "note3", "Third", "custom")
 
 	unpublished = result.GetUnpublishedNotes()
 	if len(unpublished) != 1 {
@@ -331,32 +263,70 @@ func TestDecidePublishTracking(t *testing.T) {
 	}
 }
 
-func TestDecideIntrospection(t *testing.T) {
+func TestDecideDefaultNoIntrospection(t *testing.T) {
 	provider := &mockDecideProvider{}
 	SetProvider(provider)
 	defer SetProvider(nil)
 
-	step := Decide("is_urgent", "Is this urgent?")
+	step := NewDecide("is_urgent", "Is this urgent?")
 
-	thought := New("test introspection")
-	thought.SetContent("input_text", "URGENT: Production system down!", "initial")
+	thought := newTestThought("test default no introspection")
+	thought.SetContent(context.Background(), "input_text", "URGENT: Production system down!", "initial")
 
 	result, err := step.Process(context.Background(), thought)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Verify decision note exists
-	decision, err := result.GetContent("is_urgent")
+	// Use Scan to verify decision
+	resp, err := step.Scan(result)
 	if err != nil {
-		t.Fatalf("decision note not found: %v", err)
+		t.Fatalf("scan failed: %v", err)
 	}
 
-	if decision != "true" {
-		t.Errorf("expected decision 'true', got %q", decision)
+	if !resp.Decision {
+		t.Error("expected decision true")
 	}
 
-	// Verify summary note exists (introspection enabled by default)
+	// Verify summary note does NOT exist (introspection disabled by default)
+	_, err = result.GetContent("is_urgent_summary")
+	if err == nil {
+		t.Error("expected summary note to not exist by default")
+	}
+
+	// Verify mockProvider was called only once (Binary only)
+	if provider.callCount != 1 {
+		t.Errorf("expected 1 provider call, got %d", provider.callCount)
+	}
+}
+
+func TestDecideWithIntrospection(t *testing.T) {
+	provider := &mockDecideProvider{}
+	SetProvider(provider)
+	defer SetProvider(nil)
+
+	step := NewDecide("is_urgent", "Is this urgent?").
+		WithIntrospection()
+
+	thought := newTestThought("test with introspection")
+	thought.SetContent(context.Background(), "input_text", "URGENT: Production system down!", "initial")
+
+	result, err := step.Process(context.Background(), thought)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Use Scan to verify decision
+	resp, err := step.Scan(result)
+	if err != nil {
+		t.Fatalf("scan failed: %v", err)
+	}
+
+	if !resp.Decision {
+		t.Error("expected decision true")
+	}
+
+	// Verify summary note exists (introspection enabled)
 	summary, err := result.GetContent("is_urgent_summary")
 	if err != nil {
 		t.Fatalf("summary note not found: %v", err)
@@ -377,68 +347,31 @@ func TestDecideIntrospection(t *testing.T) {
 	}
 }
 
-func TestDecideWithoutIntrospection(t *testing.T) {
-	provider := &mockDecideProvider{}
-	SetProvider(provider)
-	defer SetProvider(nil)
-
-	step := Decide("is_urgent", "Is this urgent?").
-		WithoutIntrospection()
-
-	thought := New("test without introspection")
-	thought.SetContent("input_text", "URGENT: Production system down!", "initial")
-
-	result, err := step.Process(context.Background(), thought)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	// Verify decision note exists
-	decision, err := result.GetContent("is_urgent")
-	if err != nil {
-		t.Fatalf("decision note not found: %v", err)
-	}
-
-	if decision != "true" {
-		t.Errorf("expected decision 'true', got %q", decision)
-	}
-
-	// Verify summary note does NOT exist
-	_, err = result.GetContent("is_urgent_summary")
-	if err == nil {
-		t.Error("expected summary note to not exist when introspection disabled")
-	}
-
-	// Verify mockProvider was called only once (Binary only)
-	if provider.callCount != 1 {
-		t.Errorf("expected 1 provider call, got %d", provider.callCount)
-	}
-}
-
 func TestDecideWithSummaryKey(t *testing.T) {
 	provider := &mockDecideProvider{}
 	SetProvider(provider)
 	defer SetProvider(nil)
 
-	step := Decide("is_urgent", "Is this urgent?").
+	step := NewDecide("is_urgent", "Is this urgent?").
+		WithIntrospection().
 		WithSummaryKey("custom_context")
 
-	thought := New("test custom summary key")
-	thought.SetContent("input_text", "URGENT: Production system down!", "initial")
+	thought := newTestThought("test custom summary key")
+	thought.SetContent(context.Background(), "input_text", "URGENT: Production system down!", "initial")
 
 	result, err := step.Process(context.Background(), thought)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Verify decision note exists
-	decision, err := result.GetContent("is_urgent")
+	// Use Scan to verify decision
+	resp, err := step.Scan(result)
 	if err != nil {
-		t.Fatalf("decision note not found: %v", err)
+		t.Fatalf("scan failed: %v", err)
 	}
 
-	if decision != "true" {
-		t.Errorf("expected decision 'true', got %q", decision)
+	if !resp.Decision {
+		t.Error("expected decision true")
 	}
 
 	// Verify summary is at custom key
@@ -464,25 +397,25 @@ func TestDecideWithReasoningTemperature(t *testing.T) {
 	defer SetProvider(nil)
 
 	// Note: We can't directly verify temperature in mock, but we can verify it doesn't break
-	step := Decide("is_urgent", "Is this urgent?").
+	step := NewDecide("is_urgent", "Is this urgent?").
 		WithReasoningTemperature(0.1)
 
-	thought := New("test reasoning temperature")
-	thought.SetContent("input_text", "URGENT: Production system down!", "initial")
+	thought := newTestThought("test reasoning temperature")
+	thought.SetContent(context.Background(), "input_text", "URGENT: Production system down!", "initial")
 
 	result, err := step.Process(context.Background(), thought)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Verify decision note exists
-	decision, err := result.GetContent("is_urgent")
+	// Use Scan to verify decision
+	resp, err := step.Scan(result)
 	if err != nil {
-		t.Fatalf("decision note not found: %v", err)
+		t.Fatalf("scan failed: %v", err)
 	}
 
-	if decision != "true" {
-		t.Errorf("expected decision 'true', got %q", decision)
+	if !resp.Decision {
+		t.Error("expected decision true")
 	}
 }
 
@@ -492,11 +425,12 @@ func TestDecideWithIntrospectionTemperature(t *testing.T) {
 	defer SetProvider(nil)
 
 	// Note: We can't directly verify temperature in mock, but we can verify it doesn't break
-	step := Decide("is_urgent", "Is this urgent?").
+	step := NewDecide("is_urgent", "Is this urgent?").
+		WithIntrospection().
 		WithIntrospectionTemperature(0.9)
 
-	thought := New("test introspection temperature")
-	thought.SetContent("input_text", "URGENT: Production system down!", "initial")
+	thought := newTestThought("test introspection temperature")
+	thought.SetContent(context.Background(), "input_text", "URGENT: Production system down!", "initial")
 
 	result, err := step.Process(context.Background(), thought)
 	if err != nil {
@@ -520,27 +454,28 @@ func TestDecideBuilderComposition(t *testing.T) {
 	defer SetProvider(nil)
 
 	// Chain multiple builder methods
-	step := Decide("is_urgent", "Is this urgent?").
+	step := NewDecide("is_urgent", "Is this urgent?").
+		WithIntrospection().
 		WithSummaryKey("context").
 		WithReasoningTemperature(0.1).
 		WithIntrospectionTemperature(0.8)
 
-	thought := New("test builder composition")
-	thought.SetContent("input_text", "URGENT: Production system down!", "initial")
+	thought := newTestThought("test builder composition")
+	thought.SetContent(context.Background(), "input_text", "URGENT: Production system down!", "initial")
 
 	result, err := step.Process(context.Background(), thought)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Verify decision exists
-	decision, err := result.GetContent("is_urgent")
+	// Use Scan to verify decision
+	resp, err := step.Scan(result)
 	if err != nil {
-		t.Fatalf("decision note not found: %v", err)
+		t.Fatalf("scan failed: %v", err)
 	}
 
-	if decision != "true" {
-		t.Errorf("expected decision 'true', got %q", decision)
+	if !resp.Decision {
+		t.Error("expected decision true")
 	}
 
 	// Verify custom summary key

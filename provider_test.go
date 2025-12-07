@@ -2,12 +2,13 @@ package cogito
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/zoobzio/zyn"
 )
 
-// mockProvider implements Provider for testing
+// mockProvider implements Provider for testing.
 type mockProvider struct {
 	name string
 }
@@ -145,7 +146,7 @@ func TestResolveProviderNone(t *testing.T) {
 		t.Error("expected error when no provider is configured")
 	}
 
-	if err != ErrNoProvider {
+	if !errors.Is(err, ErrNoProvider) {
 		t.Errorf("expected ErrNoProvider, got %v", err)
 	}
 }

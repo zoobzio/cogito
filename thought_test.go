@@ -1,13 +1,13 @@
 package cogito
 
 import (
+	"context"
 	"sync"
 	"testing"
-	"time"
 )
 
 func TestNew(t *testing.T) {
-	thought := New("test intent")
+	thought := newTestThought("test intent")
 
 	if thought.Intent != "test intent" {
 		t.Errorf("expected intent %q, got %q", "test intent", thought.Intent)
@@ -27,7 +27,7 @@ func TestNew(t *testing.T) {
 }
 
 func TestNewWithTrace(t *testing.T) {
-	thought := NewWithTrace("test intent", "trace-123")
+	thought := newTestThoughtWithTrace("test intent", "trace-123")
 
 	if thought.TraceID != "trace-123" {
 		t.Errorf("expected trace ID %q, got %q", "trace-123", thought.TraceID)
@@ -35,7 +35,7 @@ func TestNewWithTrace(t *testing.T) {
 }
 
 func TestAddNote(t *testing.T) {
-	thought := New("test")
+	thought := newTestThought("test")
 
 	note := Note{
 		Key:      "test-key",
@@ -44,7 +44,7 @@ func TestAddNote(t *testing.T) {
 		Metadata: map[string]string{"foo": "bar"},
 	}
 
-	thought.AddNote(note)
+	thought.AddNote(context.Background(), note)
 
 	retrieved, ok := thought.GetNote("test-key")
 	if !ok {
@@ -69,9 +69,9 @@ func TestAddNote(t *testing.T) {
 }
 
 func TestSetContent(t *testing.T) {
-	thought := New("test")
+	thought := newTestThought("test")
 
-	thought.SetContent("greeting", "hello", "test")
+	thought.SetContent(context.Background(), "greeting", "hello", "test")
 
 	content, err := thought.GetContent("greeting")
 	if err != nil {
@@ -84,14 +84,14 @@ func TestSetContent(t *testing.T) {
 }
 
 func TestSetNote(t *testing.T) {
-	thought := New("test")
+	thought := newTestThought("test")
 
 	metadata := map[string]string{
 		"confidence": "0.95",
 		"reasoning":  "test reasoning",
 	}
 
-	thought.SetNote("decision", "yes", "decide-step", metadata)
+	thought.SetNote(context.Background(), "decision", "yes", "decide-step", metadata)
 
 	note, ok := thought.GetNote("decision")
 	if !ok {
@@ -108,7 +108,7 @@ func TestSetNote(t *testing.T) {
 }
 
 func TestGetNonexistentNote(t *testing.T) {
-	thought := New("test")
+	thought := newTestThought("test")
 
 	_, ok := thought.GetNote("nonexistent")
 	if ok {
@@ -122,10 +122,10 @@ func TestGetNonexistentNote(t *testing.T) {
 }
 
 func TestNoteOverwrite(t *testing.T) {
-	thought := New("test")
+	thought := newTestThought("test")
 
-	thought.SetContent("status", "pending", "step1")
-	thought.SetContent("status", "completed", "step2")
+	thought.SetContent(context.Background(), "status", "pending", "step1")
+	thought.SetContent(context.Background(), "status", "completed", "step2")
 
 	content, err := thought.GetContent("status")
 	if err != nil {
@@ -144,9 +144,9 @@ func TestNoteOverwrite(t *testing.T) {
 }
 
 func TestGetMetadata(t *testing.T) {
-	thought := New("test")
+	thought := newTestThought("test")
 
-	thought.SetNote("result", "success", "test",
+	thought.SetNote(context.Background(), "result", "success", "test",
 		map[string]string{
 			"code":    "200",
 			"message": "OK",
@@ -172,7 +172,7 @@ func TestGetMetadata(t *testing.T) {
 }
 
 func TestGetMetadataErrors(t *testing.T) {
-	thought := New("test")
+	thought := newTestThought("test")
 
 	// Note doesn't exist
 	_, err := thought.GetMetadata("nonexistent", "field")
@@ -181,7 +181,7 @@ func TestGetMetadataErrors(t *testing.T) {
 	}
 
 	// Field doesn't exist
-	thought.SetNote("result", "ok", "test", map[string]string{"foo": "bar"})
+	thought.SetNote(context.Background(), "result", "ok", "test", map[string]string{"foo": "bar"})
 	_, err = thought.GetMetadata("result", "nonexistent")
 	if err == nil {
 		t.Error("expected error for nonexistent field")
@@ -189,7 +189,7 @@ func TestGetMetadataErrors(t *testing.T) {
 }
 
 func TestGetLatestNote(t *testing.T) {
-	thought := New("test")
+	thought := newTestThought("test")
 
 	// No notes yet
 	_, ok := thought.GetLatestNote()
@@ -197,9 +197,9 @@ func TestGetLatestNote(t *testing.T) {
 		t.Error("expected no notes")
 	}
 
-	thought.SetContent("first", "1", "test")
-	thought.SetContent("second", "2", "test")
-	thought.SetContent("third", "3", "test")
+	thought.SetContent(context.Background(), "first", "1", "test")
+	thought.SetContent(context.Background(), "second", "2", "test")
+	thought.SetContent(context.Background(), "third", "3", "test")
 
 	latest, ok := thought.GetLatestNote()
 	if !ok {
@@ -212,11 +212,11 @@ func TestGetLatestNote(t *testing.T) {
 }
 
 func TestAllNotes(t *testing.T) {
-	thought := New("test")
+	thought := newTestThought("test")
 
-	thought.SetContent("a", "1", "test")
-	thought.SetContent("b", "2", "test")
-	thought.SetContent("c", "3", "test")
+	thought.SetContent(context.Background(), "a", "1", "test")
+	thought.SetContent(context.Background(), "b", "2", "test")
+	thought.SetContent(context.Background(), "c", "3", "test")
 
 	notes := thought.AllNotes()
 
@@ -230,7 +230,7 @@ func TestAllNotes(t *testing.T) {
 }
 
 func TestGetBool(t *testing.T) {
-	thought := New("test")
+	thought := newTestThought("test")
 
 	tests := []struct {
 		value    string
@@ -247,7 +247,7 @@ func TestGetBool(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		thought.SetContent("bool", tt.value, "test")
+		thought.SetContent(context.Background(), "bool", tt.value, "test")
 		result, err := thought.GetBool("bool")
 
 		if tt.hasError {
@@ -266,9 +266,9 @@ func TestGetBool(t *testing.T) {
 }
 
 func TestGetFloat(t *testing.T) {
-	thought := New("test")
+	thought := newTestThought("test")
 
-	thought.SetContent("score", "0.95", "test")
+	thought.SetContent(context.Background(), "score", "0.95", "test")
 
 	score, err := thought.GetFloat("score")
 	if err != nil {
@@ -280,7 +280,7 @@ func TestGetFloat(t *testing.T) {
 	}
 
 	// Test invalid float
-	thought.SetContent("invalid", "not-a-number", "test")
+	thought.SetContent(context.Background(), "invalid", "not-a-number", "test")
 	_, err = thought.GetFloat("invalid")
 	if err == nil {
 		t.Error("expected error for invalid float")
@@ -288,9 +288,9 @@ func TestGetFloat(t *testing.T) {
 }
 
 func TestGetInt(t *testing.T) {
-	thought := New("test")
+	thought := newTestThought("test")
 
-	thought.SetContent("count", "42", "test")
+	thought.SetContent(context.Background(), "count", "42", "test")
 
 	count, err := thought.GetInt("count")
 	if err != nil {
@@ -302,55 +302,21 @@ func TestGetInt(t *testing.T) {
 	}
 
 	// Test invalid int
-	thought.SetContent("invalid", "not-a-number", "test")
+	thought.SetContent(context.Background(), "invalid", "not-a-number", "test")
 	_, err = thought.GetInt("invalid")
 	if err == nil {
 		t.Error("expected error for invalid int")
 	}
 }
 
-func TestAddStep(t *testing.T) {
-	thought := New("test")
-
-	step := StepRecord{
-		Name:     "test-step",
-		Type:     "custom",
-		Duration: 100 * time.Millisecond,
-	}
-
-	thought.AddStep(step)
-
-	if len(thought.Steps) != 1 {
-		t.Fatalf("expected 1 step, got %d", len(thought.Steps))
-	}
-
-	if thought.Steps[0].Name != "test-step" {
-		t.Errorf("expected name %q, got %q", "test-step", thought.Steps[0].Name)
-	}
-
-	if thought.Steps[0].Type != "custom" {
-		t.Errorf("expected type %q, got %q", "custom", thought.Steps[0].Type)
-	}
-
-	if thought.Steps[0].Timestamp.IsZero() {
-		t.Error("expected Timestamp to be set")
-	}
-}
-
 func TestClone(t *testing.T) {
-	original := New("test")
+	original := newTestThought("test")
 
-	original.SetNote("result", "success", "test",
+	original.SetNote(context.Background(), "result", "success", "test",
 		map[string]string{
 			"code":    "200",
 			"message": "OK",
 		})
-
-	original.AddStep(StepRecord{
-		Name:     "step1",
-		Type:     "custom",
-		Duration: 100 * time.Millisecond,
-	})
 
 	clone := original.Clone()
 
@@ -378,7 +344,7 @@ func TestClone(t *testing.T) {
 	}
 
 	// Verify deep copy - modifying clone shouldn't affect original
-	clone.SetContent("result", "modified", "test")
+	clone.SetContent(context.Background(), "result", "modified", "test")
 
 	originalContent, _ := original.GetContent("result")
 	cloneContent, _ := clone.GetContent("result")
@@ -386,23 +352,10 @@ func TestClone(t *testing.T) {
 	if originalContent == cloneContent {
 		t.Error("notes not deep copied - modification affected original")
 	}
-
-	// Verify steps are cloned
-	if len(clone.Steps) != 1 {
-		t.Fatalf("expected 1 step in clone, got %d", len(clone.Steps))
-	}
-
-	if clone.Steps[0].Name != "step1" {
-		t.Error("step not cloned correctly")
-	}
-
-	if clone.Steps[0].Type != "custom" {
-		t.Error("step type not cloned correctly")
-	}
 }
 
 func TestConcurrentAccess(t *testing.T) {
-	thought := New("test")
+	thought := newTestThought("test")
 
 	var wg sync.WaitGroup
 	numGoroutines := 100
@@ -412,7 +365,7 @@ func TestConcurrentAccess(t *testing.T) {
 	for i := 0; i < numGoroutines; i++ {
 		go func(n int) {
 			defer wg.Done()
-			thought.SetContent("counter", string(rune('0'+n%10)), "test")
+			thought.SetContent(context.Background(), "counter", string(rune('0'+n%10)), "test")
 		}(i)
 	}
 	wg.Wait()
@@ -436,11 +389,11 @@ func TestConcurrentAccess(t *testing.T) {
 }
 
 func TestConcurrentClone(t *testing.T) {
-	original := New("test")
+	original := newTestThought("test")
 
 	// Add some data
 	for i := 0; i < 10; i++ {
-		original.SetContent("key", "value", "test")
+		original.SetContent(context.Background(), "key", "value", "test")
 	}
 
 	var wg sync.WaitGroup

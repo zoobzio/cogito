@@ -36,19 +36,51 @@ var (
 	)
 
 	// Introspection signals.
-	IntrospectionStarted = capitan.NewSignal(
-		"cogito.introspection.started",
-		"Transform synapse beginning semantic summary generation",
-	)
 	IntrospectionCompleted = capitan.NewSignal(
 		"cogito.introspection.completed",
 		"Transform synapse completed semantic summary",
 	)
 
-	// Context signals.
-	ContextAccumulated = capitan.NewSignal(
-		"cogito.context.accumulated",
-		"Unpublished notes gathered for next LLM call",
+	// Sift signals.
+	SiftDecided = capitan.NewSignal(
+		"cogito.sift.decided",
+		"Semantic gate decision made",
+	)
+
+	// Amplify signals.
+	AmplifyIterationCompleted = capitan.NewSignal(
+		"cogito.amplify.iteration.completed",
+		"Refinement iteration finished",
+	)
+	AmplifyCompleted = capitan.NewSignal(
+		"cogito.amplify.completed",
+		"Refinement met completion criteria",
+	)
+
+	// Converge signals.
+	ConvergeBranchStarted = capitan.NewSignal(
+		"cogito.converge.branch.started",
+		"Parallel branch began execution",
+	)
+	ConvergeBranchCompleted = capitan.NewSignal(
+		"cogito.converge.branch.completed",
+		"Parallel branch finished execution",
+	)
+	ConvergeSynthesisStarted = capitan.NewSignal(
+		"cogito.converge.synthesis.started",
+		"Synthesis phase began",
+	)
+
+	// Seek signals.
+	SeekResultsFound = capitan.NewSignal(
+		"cogito.seek.results_found",
+		"Semantic search returned results",
+	)
+
+	// Survey signals.
+	SurveyResultsFound = capitan.NewSignal(
+		"cogito.survey.results_found",
+		"Task-grouped semantic search returned results",
 	)
 )
 
@@ -58,7 +90,6 @@ var (
 	FieldIntent    = capitan.NewStringKey("intent")
 	FieldTraceID   = capitan.NewStringKey("trace_id")
 	FieldNoteCount = capitan.NewIntKey("note_count")
-	FieldStepCount = capitan.NewIntKey("step_count")
 
 	// Step metadata.
 	FieldStepName    = capitan.NewStringKey("step_name")
@@ -81,4 +112,20 @@ var (
 
 	// Error information.
 	FieldError = capitan.NewErrorKey("error")
+
+	// Decision metadata (for Sift, Amplify).
+	FieldDecision   = capitan.NewBoolKey("decision")
+	FieldConfidence = capitan.NewFloat64Key("confidence")
+
+	// Iteration metadata (for Amplify).
+	FieldIterationCount = capitan.NewIntKey("iteration_count")
+
+	// Branch metadata (for Converge).
+	FieldBranchCount = capitan.NewIntKey("branch_count")
+	FieldBranchName  = capitan.NewStringKey("branch_name")
+
+	// Search metadata (for Seek, Survey).
+	FieldSearchQuery = capitan.NewStringKey("search_query")
+	FieldResultCount = capitan.NewIntKey("result_count")
+	FieldSearchLimit = capitan.NewIntKey("search_limit")
 )
