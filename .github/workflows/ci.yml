@@ -7,7 +7,7 @@ on:
     branches: [ main ]
 
 env:
-  GO_VERSION: "1.23"
+  GO_VERSION: "1.25"
 
 jobs:
   # Unit tests with race detection - primary quality gate
@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        go-version: ["1.23", "1.24"]
+        go-version: ["1.24", "1.25"]
     steps:
     - uses: actions/checkout@v4
 
@@ -121,6 +121,39 @@ jobs:
         name: gosec-results
         path: gosec-results.sarif
         retention-days: 7
+
+  # Performance benchmarks
+  benchmark:
+    name: Benchmarks
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Go ${{ env.GO_VERSION }}
+      uses: actions/setup-go@v5
+      with:
+        go-version: ${{ env.GO_VERSION }}
+
+    - name: Cache Go modules
+      uses: actions/cache@v4
+      with:
+        path: ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ env.GO_VERSION }}-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-${{ env.GO_VERSION }}-
+
+    - name: Download dependencies
+      run: go mod download
+
+    - name: Run benchmarks
+      run: go test -bench=. -benchmem -benchtime=100ms -timeout=10m ./... | tee benchmark-results.txt
+
+    - name: Upload benchmark results
+      uses: actions/upload-artifact@v4
+      with:
+        name: benchmark-results
+        path: benchmark-results.txt
+        retention-days: 30
 
   # Overall CI status check
   ci-complete:

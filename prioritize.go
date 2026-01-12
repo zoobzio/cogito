@@ -14,6 +14,7 @@ import (
 // Prioritize is a prioritization primitive that implements pipz.Chainable[*Thought].
 // It prioritizes items by criteria and stores the full response for typed retrieval.
 type Prioritize struct {
+	identity                 pipz.Identity
 	key                      string
 	criteria                 string
 	items                    []string // Explicit items to rank (mode 1)
@@ -49,6 +50,7 @@ type Prioritize struct {
 //	fmt.Println(resp.Ranked, resp.Confidence, resp.Reasoning)
 func NewPrioritize(key, criteria string, items []string) *Prioritize {
 	return &Prioritize{
+		identity:         pipz.NewIdentity(key, "Prioritization primitive"),
 		key:              key,
 		criteria:         criteria,
 		items:            items,
@@ -80,6 +82,7 @@ func NewPrioritize(key, criteria string, items []string) *Prioritize {
 //	cogito.NewPrioritizeFrom("ticket_priority", "urgency and impact", "ticket_list"),
 func NewPrioritizeFrom(key, criteria, itemsKey string) *Prioritize {
 	return &Prioritize{
+		identity:         pipz.NewIdentity(key, "Prioritization primitive (from note)"),
 		key:              key,
 		criteria:         criteria,
 		itemsKey:         itemsKey,
@@ -202,44 +205,13 @@ func (r *Prioritize) resolveItems(t *Thought) ([]string, error) {
 
 // runIntrospection executes the transform synapse for semantic summary.
 func (r *Prioritize) runIntrospection(ctx context.Context, t *Thought, resp zyn.RankingResponse, originalNotes []Note, provider Provider) error {
-	transformSynapse, err := zyn.Transform(
-		"Synthesize ranking into context for next reasoning step",
-		provider,
-	)
-	if err != nil {
-		return fmt.Errorf("prioritize: failed to create transform synapse: %w", err)
-	}
-
-	introspectionInput := r.buildIntrospectionInput(resp, originalNotes)
-
-	// Determine introspection temperature
-	introspectionTemp := DefaultIntrospectionTemperature
-	if r.introspectionTemperature != 0 {
-		introspectionTemp = r.introspectionTemperature
-	}
-	introspectionInput.Temperature = introspectionTemp
-
-	summary, err := transformSynapse.FireWithInput(ctx, t.Session, introspectionInput)
-	if err != nil {
-		return fmt.Errorf("prioritize: transform synapse execution failed: %w", err)
-	}
-
-	// Determine summary key
-	summaryKey := r.summaryKey
-	if summaryKey == "" {
-		summaryKey = r.key + "_summary"
-	}
-	if err := t.SetContent(ctx, summaryKey, summary, "prioritize-introspection"); err != nil {
-		return fmt.Errorf("prioritize: failed to persist introspection note: %w", err)
-	}
-
-	capitan.Emit(ctx, IntrospectionCompleted,
-		FieldTraceID.Field(t.TraceID),
-		FieldStepType.Field("prioritize"),
-		FieldContextSize.Field(len(summary)),
-	)
-
-	return nil
+	return runIntrospection(ctx, t, provider, r.buildIntrospectionInput(resp, originalNotes), introspectionConfig{
+		stepType:                 "prioritize",
+		key:                      r.key,
+		summaryKey:               r.summaryKey,
+		introspectionTemperature: r.introspectionTemperature,
+		synapsePrompt:            "Synthesize ranking into context for next reasoning step",
+	})
 }
 
 // buildIntrospectionInput formats ranking for the transform synapse.
@@ -272,9 +244,14 @@ func (r *Prioritize) emitFailed(ctx context.Context, t *Thought, start time.Time
 	)
 }
 
-// Name implements pipz.Chainable[*Thought].
-func (r *Prioritize) Name() pipz.Name {
-	return pipz.Name(r.key)
+// Identity implements pipz.Chainable[*Thought].
+func (r *Prioritize) Identity() pipz.Identity {
+	return r.identity
+}
+
+// Schema implements pipz.Chainable[*Thought].
+func (r *Prioritize) Schema() pipz.Node {
+	return pipz.Node{Identity: r.identity, Type: "prioritize"}
 }
 
 // Close implements pipz.Chainable[*Thought].

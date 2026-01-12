@@ -21,6 +21,7 @@ type Forget struct {
 	key      string
 	dropKeys map[string]bool // Keys to exclude
 	keepKeys map[string]bool // Keys to include (if set, only these are kept)
+	identity pipz.Identity
 }
 
 // NewForget creates a new forget primitive.
@@ -48,6 +49,7 @@ func NewForget(key string) *Forget {
 		key:      key,
 		dropKeys: make(map[string]bool),
 		keepKeys: make(map[string]bool),
+		identity: pipz.NewIdentity(key, "Note filtering primitive"),
 	}
 }
 
@@ -150,9 +152,14 @@ func (f *Forget) emitFailed(ctx context.Context, t *Thought, start time.Time, er
 	)
 }
 
-// Name implements pipz.Chainable[*Thought].
-func (f *Forget) Name() pipz.Name {
-	return pipz.Name(f.key)
+// Identity implements pipz.Chainable[*Thought].
+func (f *Forget) Identity() pipz.Identity {
+	return f.identity
+}
+
+// Schema implements pipz.Chainable[*Thought].
+func (f *Forget) Schema() pipz.Node {
+	return pipz.Node{Identity: f.identity, Type: "forget"}
 }
 
 // Close implements pipz.Chainable[*Thought].

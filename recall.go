@@ -14,6 +14,7 @@ import (
 // into the current Thought. This enables cross-thought knowledge transfer without.
 // copying all notes - just a distilled summary.
 type Recall struct {
+	identity  pipz.Identity
 	key       string
 	thoughtID string
 	prompt    string
@@ -39,6 +40,7 @@ type Recall struct {
 //	result, _ := recall.Process(ctx, thought)
 func NewRecall(key, thoughtID string) *Recall {
 	return &Recall{
+		identity:  pipz.NewIdentity(key, "Thought recall primitive"),
 		key:       key,
 		thoughtID: thoughtID,
 		prompt:    "Summarize the key information, decisions, and outcomes",
@@ -126,9 +128,14 @@ func (r *Recall) emitFailed(ctx context.Context, t *Thought, start time.Time, er
 	)
 }
 
-// Name implements pipz.Chainable[*Thought].
-func (r *Recall) Name() pipz.Name {
-	return pipz.Name(r.key)
+// Identity implements pipz.Chainable[*Thought].
+func (r *Recall) Identity() pipz.Identity {
+	return r.identity
+}
+
+// Schema implements pipz.Chainable[*Thought].
+func (r *Recall) Schema() pipz.Node {
+	return pipz.Node{Identity: r.identity, Type: "recall"}
 }
 
 // Close implements pipz.Chainable[*Thought].

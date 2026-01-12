@@ -248,8 +248,8 @@ func TestSurveyBuilders(t *testing.T) {
 	if survey.temperature != 0.8 {
 		t.Errorf("expected temperature 0.8, got %f", survey.temperature)
 	}
-	if survey.Name() != "key" {
-		t.Errorf("expected name 'key', got %s", survey.Name())
+	if survey.Identity().Name() != "key" {
+		t.Errorf("expected name 'key', got %s", survey.Identity().Name())
 	}
 	if survey.Close() != nil {
 		t.Error("expected Close to return nil")

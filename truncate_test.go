@@ -164,8 +164,8 @@ func TestTruncateKeepOnlyLast(t *testing.T) {
 func TestTruncateChainable(t *testing.T) {
 	truncate := NewTruncate("test_truncate")
 
-	if truncate.Name() != "test_truncate" {
-		t.Errorf("expected name 'test_truncate', got %q", truncate.Name())
+	if truncate.Identity().Name() != "test_truncate" {
+		t.Errorf("expected name 'test_truncate', got %q", truncate.Identity().Name())
 	}
 
 	if err := truncate.Close(); err != nil {

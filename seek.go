@@ -15,6 +15,7 @@ import (
 // It embeds a natural language query and finds the most relevant notes,
 // then synthesizes the results into context for the current thought.
 type Seek struct {
+	identity    pipz.Identity
 	key         string
 	query       string
 	limit       int
@@ -36,6 +37,7 @@ type SeekResult struct {
 // The query is embedded and used to find semantically similar notes.
 func NewSeek(key, query string) *Seek {
 	return &Seek{
+		identity:    pipz.NewIdentity(key, "Semantic search primitive"),
 		key:         key,
 		query:       query,
 		limit:       10,
@@ -191,9 +193,14 @@ func (s *Seek) Scan() *SeekResult {
 	return s.result
 }
 
-// Name implements pipz.Chainable[*Thought].
-func (s *Seek) Name() pipz.Name {
-	return pipz.Name(s.key)
+// Identity implements pipz.Chainable[*Thought].
+func (s *Seek) Identity() pipz.Identity {
+	return s.identity
+}
+
+// Schema implements pipz.Chainable[*Thought].
+func (s *Seek) Schema() pipz.Node {
+	return pipz.Node{Identity: s.identity, Type: "seek"}
 }
 
 // Close implements pipz.Chainable[*Thought].

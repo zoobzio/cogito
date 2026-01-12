@@ -13,7 +13,7 @@ func TestDo(t *testing.T) {
 	thought := newTestThought("test")
 	thought.SetContent(context.Background(), "input", "test value", "test")
 
-	processor := Do("custom-logic", func(ctx context.Context, th *Thought) (*Thought, error) {
+	processor := Do(pipz.NewIdentity("custom-logic", "Test processor"), func(ctx context.Context, th *Thought) (*Thought, error) {
 		input, _ := th.GetContent("input")
 		th.SetContent(ctx, "output", input+" processed", "custom-logic")
 		return th, nil
@@ -38,7 +38,7 @@ func TestDo(t *testing.T) {
 func TestDoWithError(t *testing.T) {
 	thought := newTestThought("test")
 
-	processor := Do("failing-logic", func(ctx context.Context, th *Thought) (*Thought, error) {
+	processor := Do(pipz.NewIdentity("failing-logic", "Test processor"), func(ctx context.Context, th *Thought) (*Thought, error) {
 		return th, errors.New("intentional error")
 	})
 
@@ -57,7 +57,7 @@ func TestTransform(t *testing.T) {
 	thought := newTestThought("test")
 	thought.SetContent(context.Background(), "count", "5", "test")
 
-	processor := Transform("increment", func(ctx context.Context, th *Thought) *Thought {
+	processor := Transform(pipz.NewIdentity("increment", "Test processor"), func(ctx context.Context, th *Thought) *Thought {
 		count, _ := th.GetInt("count")
 		th.SetContent(ctx, "count", string(rune('0'+count+1)), "increment")
 		return th
@@ -84,7 +84,7 @@ func TestDoContextPropagation(t *testing.T) {
 
 	thought := newTestThought("test")
 
-	processor := Do("check-context", func(ctx context.Context, th *Thought) (*Thought, error) {
+	processor := Do(pipz.NewIdentity("check-context", "Test processor"), func(ctx context.Context, th *Thought) (*Thought, error) {
 		value := ctx.Value(ctxKey{})
 		if value == nil {
 			return th, errors.New("context value not found")
@@ -114,7 +114,7 @@ func TestTransformContextPropagation(t *testing.T) {
 
 	thought := newTestThought("test")
 
-	processor := Transform("get-from-context", func(ctx context.Context, th *Thought) *Thought {
+	processor := Transform(pipz.NewIdentity("get-from-context", "Test processor"), func(ctx context.Context, th *Thought) *Thought {
 		value := ctx.Value(ctxKey{})
 		if value != nil {
 			th.SetContent(ctx, "value", value.(string), "get-from-context")
@@ -141,13 +141,13 @@ func TestDoChaining(t *testing.T) {
 	thought := newTestThought("test")
 	thought.SetContent(context.Background(), "value", "1", "test")
 
-	step1 := Do("add-two", func(ctx context.Context, th *Thought) (*Thought, error) {
+	step1 := Do(pipz.NewIdentity("add-two", "Test processor"), func(ctx context.Context, th *Thought) (*Thought, error) {
 		val, _ := th.GetInt("value")
 		th.SetContent(ctx, "value", string(rune('0'+val+2)), "add-two")
 		return th, nil
 	})
 
-	step2 := Do("multiply-by-three", func(ctx context.Context, th *Thought) (*Thought, error) {
+	step2 := Do(pipz.NewIdentity("multiply-by-three", "Test processor"), func(ctx context.Context, th *Thought) (*Thought, error) {
 		val, _ := th.GetInt("value")
 		th.SetContent(ctx, "value", string(rune('0'+val*3)), "multiply-by-three")
 		return th, nil
@@ -180,7 +180,7 @@ func TestEffect(t *testing.T) {
 	thought.SetContent(context.Background(), "input", "original", "test")
 
 	var observed string
-	processor := Effect("observe", func(ctx context.Context, th *Thought) error {
+	processor := Effect(pipz.NewIdentity("observe", "Test processor"), func(ctx context.Context, th *Thought) error {
 		observed, _ = th.GetContent("input")
 		return nil
 	})
@@ -206,7 +206,7 @@ func TestMutate(t *testing.T) {
 		thought := newTestThought("test")
 		thought.SetContent(context.Background(), "priority", "high", "test")
 
-		processor := Mutate("upgrade",
+		processor := Mutate(pipz.NewIdentity("upgrade", "Test processor"),
 			func(ctx context.Context, th *Thought) *Thought {
 				th.SetContent(ctx, "priority", "urgent", "upgrade")
 				return th
@@ -232,7 +232,7 @@ func TestMutate(t *testing.T) {
 		thought := newTestThought("test")
 		thought.SetContent(context.Background(), "priority", "low", "test")
 
-		processor := Mutate("upgrade",
+		processor := Mutate(pipz.NewIdentity("upgrade", "Test processor"),
 			func(ctx context.Context, th *Thought) *Thought {
 				th.SetContent(ctx, "priority", "urgent", "upgrade")
 				return th
@@ -259,7 +259,7 @@ func TestEnrich(t *testing.T) {
 	t.Run("applies enrichment on success", func(t *testing.T) {
 		thought := newTestThought("test")
 
-		processor := Enrich("add-metadata", func(ctx context.Context, th *Thought) (*Thought, error) {
+		processor := Enrich(pipz.NewIdentity("add-metadata", "Test processor"), func(ctx context.Context, th *Thought) (*Thought, error) {
 			th.SetContent(ctx, "enriched", "yes", "add-metadata")
 			return th, nil
 		})
@@ -279,7 +279,7 @@ func TestEnrich(t *testing.T) {
 		thought := newTestThought("test")
 		thought.SetContent(context.Background(), "original", "value", "test")
 
-		processor := Enrich("failing-enrich", func(ctx context.Context, th *Thought) (*Thought, error) {
+		processor := Enrich(pipz.NewIdentity("failing-enrich", "Test processor"), func(ctx context.Context, th *Thought) (*Thought, error) {
 			return th, errors.New("enrichment failed")
 		})
 
@@ -300,12 +300,12 @@ func TestSequence(t *testing.T) {
 	thought := newTestThought("test")
 	thought.SetContent(context.Background(), "value", "1", "test")
 
-	seq := Sequence("pipeline",
-		Do("step1", func(ctx context.Context, th *Thought) (*Thought, error) {
+	seq := Sequence(pipz.NewIdentity("pipeline", "Test pipeline"),
+		Do(pipz.NewIdentity("step1", "Test processor"), func(ctx context.Context, th *Thought) (*Thought, error) {
 			th.SetContent(ctx, "step1", "done", "step1")
 			return th, nil
 		}),
-		Do("step2", func(ctx context.Context, th *Thought) (*Thought, error) {
+		Do(pipz.NewIdentity("step2", "Test processor"), func(ctx context.Context, th *Thought) (*Thought, error) {
 			th.SetContent(ctx, "step2", "done", "step2")
 			return th, nil
 		}),
@@ -329,12 +329,12 @@ func TestFilter(t *testing.T) {
 		thought := newTestThought("test")
 		thought.SetContent(context.Background(), "type", "urgent", "test")
 
-		filter := Filter("urgent-only",
+		filter := Filter(pipz.NewIdentity("urgent-only", "Test filter"),
 			func(ctx context.Context, th *Thought) bool {
 				t, _ := th.GetContent("type")
 				return t == "urgent"
 			},
-			Do("handle-urgent", func(ctx context.Context, th *Thought) (*Thought, error) {
+			Do(pipz.NewIdentity("handle-urgent", "Test processor"), func(ctx context.Context, th *Thought) (*Thought, error) {
 				th.SetContent(ctx, "handled", "yes", "handle-urgent")
 				return th, nil
 			}),
@@ -355,12 +355,12 @@ func TestFilter(t *testing.T) {
 		thought := newTestThought("test")
 		thought.SetContent(context.Background(), "type", "normal", "test")
 
-		filter := Filter("urgent-only",
+		filter := Filter(pipz.NewIdentity("urgent-only", "Test filter"),
 			func(ctx context.Context, th *Thought) bool {
 				t, _ := th.GetContent("type")
 				return t == "urgent"
 			},
-			Do("handle-urgent", func(ctx context.Context, th *Thought) (*Thought, error) {
+			Do(pipz.NewIdentity("handle-urgent", "Test processor"), func(ctx context.Context, th *Thought) (*Thought, error) {
 				th.SetContent(ctx, "handled", "yes", "handle-urgent")
 				return th, nil
 			}),
@@ -382,15 +382,15 @@ func TestSwitch(t *testing.T) {
 	thought := newTestThought("test")
 	thought.SetContent(context.Background(), "category", "question", "test")
 
-	router := Switch("router", func(ctx context.Context, th *Thought) string {
+	router := Switch(pipz.NewIdentity("router", "Test router"), func(ctx context.Context, th *Thought) string {
 		cat, _ := th.GetContent("category")
 		return cat
 	})
-	router.AddRoute("question", Do("handle-question", func(ctx context.Context, th *Thought) (*Thought, error) {
+	router.AddRoute("question", Do(pipz.NewIdentity("handle-question", "Test processor"), func(ctx context.Context, th *Thought) (*Thought, error) {
 		th.SetContent(ctx, "routed", "question-handler", "handle-question")
 		return th, nil
 	}))
-	router.AddRoute("command", Do("handle-command", func(ctx context.Context, th *Thought) (*Thought, error) {
+	router.AddRoute("command", Do(pipz.NewIdentity("handle-command", "Test processor"), func(ctx context.Context, th *Thought) (*Thought, error) {
 		th.SetContent(ctx, "routed", "command-handler", "handle-command")
 		return th, nil
 	}))
@@ -411,7 +411,7 @@ func TestGate(t *testing.T) {
 		thought := newTestThought("test")
 		thought.SetContent(context.Background(), "valid", "yes", "test")
 
-		gate := Gate("valid-only", func(ctx context.Context, th *Thought) bool {
+		gate := Gate(pipz.NewIdentity("valid-only", "Test gate"), func(ctx context.Context, th *Thought) bool {
 			v, _ := th.GetContent("valid")
 			return v == "yes"
 		})
@@ -430,7 +430,7 @@ func TestGate(t *testing.T) {
 		thought := newTestThought("test")
 		thought.SetContent(context.Background(), "valid", "no", "test")
 
-		gate := Gate("valid-only", func(ctx context.Context, th *Thought) bool {
+		gate := Gate(pipz.NewIdentity("valid-only", "Test gate"), func(ctx context.Context, th *Thought) bool {
 			v, _ := th.GetContent("valid")
 			return v == "yes"
 		})
@@ -450,11 +450,11 @@ func TestGate(t *testing.T) {
 func TestFallback(t *testing.T) {
 	thought := newTestThought("test")
 
-	fallback := Fallback("resilient",
-		Do("primary", func(ctx context.Context, th *Thought) (*Thought, error) {
+	fallback := Fallback(pipz.NewIdentity("resilient", "Test fallback"),
+		Do(pipz.NewIdentity("primary", "Test processor"), func(ctx context.Context, th *Thought) (*Thought, error) {
 			return th, errors.New("primary failed")
 		}),
-		Do("backup", func(ctx context.Context, th *Thought) (*Thought, error) {
+		Do(pipz.NewIdentity("backup", "Test processor"), func(ctx context.Context, th *Thought) (*Thought, error) {
 			th.SetContent(ctx, "handler", "backup", "backup")
 			return th, nil
 		}),
@@ -475,7 +475,7 @@ func TestRetry(t *testing.T) {
 	thought := newTestThought("test")
 
 	attempts := 0
-	retry := Retry("retrying", Do("flaky", func(ctx context.Context, th *Thought) (*Thought, error) {
+	retry := Retry(pipz.NewIdentity("retrying", "Test retry"), Do(pipz.NewIdentity("flaky", "Test processor"), func(ctx context.Context, th *Thought) (*Thought, error) {
 		attempts++
 		if attempts < 3 {
 			return th, errors.New("not yet")
@@ -503,7 +503,7 @@ func TestTimeout(t *testing.T) {
 	t.Run("completes within timeout", func(t *testing.T) {
 		thought := newTestThought("test")
 
-		timeout := Timeout("bounded", Do("fast", func(ctx context.Context, th *Thought) (*Thought, error) {
+		timeout := Timeout(pipz.NewIdentity("bounded", "Test timeout"), Do(pipz.NewIdentity("fast", "Test processor"), func(ctx context.Context, th *Thought) (*Thought, error) {
 			th.SetContent(ctx, "result", "done", "fast")
 			return th, nil
 		}), time.Second)
@@ -522,7 +522,7 @@ func TestTimeout(t *testing.T) {
 	t.Run("fails on timeout", func(t *testing.T) {
 		thought := newTestThought("test")
 
-		timeout := Timeout("bounded", Do("slow", func(ctx context.Context, th *Thought) (*Thought, error) {
+		timeout := Timeout(pipz.NewIdentity("bounded", "Test timeout"), Do(pipz.NewIdentity("slow", "Test processor"), func(ctx context.Context, th *Thought) (*Thought, error) {
 			select {
 			case <-time.After(500 * time.Millisecond):
 				return th, nil
@@ -542,7 +542,7 @@ func TestCircuitBreaker(t *testing.T) {
 	thought := newTestThought("test")
 
 	failures := 0
-	cb := CircuitBreaker("breaker", Do("failing", func(ctx context.Context, th *Thought) (*Thought, error) {
+	cb := CircuitBreaker(pipz.NewIdentity("breaker", "Test circuit breaker"), Do(pipz.NewIdentity("failing-service", "Test processor"), func(ctx context.Context, th *Thought) (*Thought, error) {
 		failures++
 		return th, errors.New("service down")
 	}), 3, time.Second)
@@ -559,8 +559,11 @@ func TestCircuitBreaker(t *testing.T) {
 }
 
 func TestRateLimiter(t *testing.T) {
-	// RateLimiter just passes through data when rate limit is not exceeded
-	rl := RateLimiter("limiter", 100, 10)
+	// RateLimiter now requires a processor parameter
+	processor := Do(pipz.NewIdentity("inner", "Inner processor"), func(ctx context.Context, th *Thought) (*Thought, error) {
+		return th, nil
+	})
+	rl := RateLimiter(pipz.NewIdentity("limiter", "Test rate limiter"), 100, 10, processor)
 
 	thought := newTestThought("test")
 	thought.SetContent(context.Background(), "value", "test", "test")
@@ -582,20 +585,20 @@ func TestConcurrent(t *testing.T) {
 	thought.SetContent(context.Background(), "input", "value", "test")
 
 	// Use a reducer to verify all branches ran
-	concurrent := Concurrent("parallel",
-		func(original *Thought, results map[pipz.Name]*Thought, errors map[pipz.Name]error) *Thought {
+	concurrent := Concurrent(pipz.NewIdentity("parallel", "Test concurrent"),
+		func(original *Thought, results map[pipz.Identity]*Thought, errors map[pipz.Identity]error) *Thought {
 			// Aggregate results into original
-			for name, result := range results {
-				content, _ := result.GetContent(string(name))
-				original.SetContent(context.Background(), string(name), content, "reducer")
+			for identity, result := range results {
+				content, _ := result.GetContent(identity.Name())
+				original.SetContent(context.Background(), identity.Name(), content, "reducer")
 			}
 			return original
 		},
-		Do("branch1", func(ctx context.Context, th *Thought) (*Thought, error) {
+		Do(pipz.NewIdentity("branch1", "Test processor"), func(ctx context.Context, th *Thought) (*Thought, error) {
 			th.SetContent(ctx, "branch1", "done1", "branch1")
 			return th, nil
 		}),
-		Do("branch2", func(ctx context.Context, th *Thought) (*Thought, error) {
+		Do(pipz.NewIdentity("branch2", "Test processor"), func(ctx context.Context, th *Thought) (*Thought, error) {
 			th.SetContent(ctx, "branch2", "done2", "branch2")
 			return th, nil
 		}),
@@ -621,13 +624,13 @@ func TestRace(t *testing.T) {
 	thought := newTestThought("test")
 
 	// First successful result wins
-	race := Race("fastest",
-		Do("slow", func(ctx context.Context, th *Thought) (*Thought, error) {
+	race := Race(pipz.NewIdentity("fastest", "Test race"),
+		Do(pipz.NewIdentity("slow", "Test processor"), func(ctx context.Context, th *Thought) (*Thought, error) {
 			time.Sleep(100 * time.Millisecond)
 			th.SetContent(ctx, "winner", "slow", "slow")
 			return th, nil
 		}),
-		Do("fast", func(ctx context.Context, th *Thought) (*Thought, error) {
+		Do(pipz.NewIdentity("fast", "Test processor"), func(ctx context.Context, th *Thought) (*Thought, error) {
 			th.SetContent(ctx, "winner", "fast", "fast")
 			return th, nil
 		}),
@@ -647,11 +650,11 @@ func TestRace(t *testing.T) {
 func TestWorkerPool(t *testing.T) {
 	thought := newTestThought("test")
 
-	pool := WorkerPool("pool", 2,
-		Do("task1", func(ctx context.Context, th *Thought) (*Thought, error) {
+	pool := WorkerPool(pipz.NewIdentity("pool", "Test worker pool"), 2,
+		Do(pipz.NewIdentity("worker1", "Test processor"), func(ctx context.Context, th *Thought) (*Thought, error) {
 			return th, nil
 		}),
-		Do("task2", func(ctx context.Context, th *Thought) (*Thought, error) {
+		Do(pipz.NewIdentity("worker2", "Test processor"), func(ctx context.Context, th *Thought) (*Thought, error) {
 			return th, nil
 		}),
 	)

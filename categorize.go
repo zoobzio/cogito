@@ -14,6 +14,7 @@ import (
 // Categorize is a multi-class categorization primitive that implements pipz.Chainable[*Thought].
 // It asks the LLM to place input into one of the provided categories.
 type Categorize struct {
+	identity                 pipz.Identity
 	key                      string
 	question                 string
 	categories               []string
@@ -43,6 +44,7 @@ type Categorize struct {
 //	fmt.Println(resp.Primary, resp.Confidence, resp.Reasoning)
 func NewCategorize(key, question string, categories []string) *Categorize {
 	return &Categorize{
+		identity:         pipz.NewIdentity(key, "Multi-class categorization primitive"),
 		key:              key,
 		question:         question,
 		categories:       categories,
@@ -69,7 +71,7 @@ func (c *Categorize) Process(ctx context.Context, t *Thought) (*Thought, error) 
 
 	// Get unpublished notes
 	unpublished := t.GetUnpublishedNotes()
-	context := RenderNotesToContext(unpublished)
+	noteContext := RenderNotesToContext(unpublished)
 
 	// Emit step started
 	capitan.Emit(ctx, StepStarted,
@@ -89,7 +91,7 @@ func (c *Categorize) Process(ctx context.Context, t *Thought) (*Thought, error) 
 	// PHASE 1: REASONING - Classification
 	classResponse, err := classificationSynapse.FireWithInput(ctx, t.Session, zyn.ClassificationInput{
 		Subject:     c.question,
-		Context:     context,
+		Context:     noteContext,
 		Temperature: reasoningTemp,
 	})
 	if err != nil {
@@ -134,44 +136,13 @@ func (c *Categorize) Process(ctx context.Context, t *Thought) (*Thought, error) 
 
 // runIntrospection executes the transform synapse for semantic summary.
 func (c *Categorize) runIntrospection(ctx context.Context, t *Thought, resp zyn.ClassificationResponse, originalNotes []Note, provider Provider) error {
-	transformSynapse, err := zyn.Transform(
-		"Synthesize classification into context for next reasoning step",
-		provider,
-	)
-	if err != nil {
-		return fmt.Errorf("categorize: failed to create transform synapse: %w", err)
-	}
-
-	introspectionInput := c.buildIntrospectionInput(resp, originalNotes)
-
-	// Determine introspection temperature
-	introspectionTemp := DefaultIntrospectionTemperature
-	if c.introspectionTemperature != 0 {
-		introspectionTemp = c.introspectionTemperature
-	}
-	introspectionInput.Temperature = introspectionTemp
-
-	summary, err := transformSynapse.FireWithInput(ctx, t.Session, introspectionInput)
-	if err != nil {
-		return fmt.Errorf("categorize: transform synapse execution failed: %w", err)
-	}
-
-	// Determine summary key
-	summaryKey := c.summaryKey
-	if summaryKey == "" {
-		summaryKey = c.key + "_summary"
-	}
-	if err := t.SetContent(ctx, summaryKey, summary, "categorize-introspection"); err != nil {
-		return fmt.Errorf("categorize: failed to persist introspection note: %w", err)
-	}
-
-	capitan.Emit(ctx, IntrospectionCompleted,
-		FieldTraceID.Field(t.TraceID),
-		FieldStepType.Field("categorize"),
-		FieldContextSize.Field(len(summary)),
-	)
-
-	return nil
+	return runIntrospection(ctx, t, provider, c.buildIntrospectionInput(resp, originalNotes), introspectionConfig{
+		stepType:                 "categorize",
+		key:                      c.key,
+		summaryKey:               c.summaryKey,
+		introspectionTemperature: c.introspectionTemperature,
+		synapsePrompt:            "Synthesize classification into context for next reasoning step",
+	})
 }
 
 // buildIntrospectionInput formats classification for the transform synapse.
@@ -209,9 +180,14 @@ func (c *Categorize) emitFailed(ctx context.Context, t *Thought, start time.Time
 	)
 }
 
-// Name implements pipz.Chainable[*Thought].
-func (c *Categorize) Name() pipz.Name {
-	return pipz.Name(c.key)
+// Identity implements pipz.Chainable[*Thought].
+func (c *Categorize) Identity() pipz.Identity {
+	return c.identity
+}
+
+// Schema implements pipz.Chainable[*Thought].
+func (c *Categorize) Schema() pipz.Node {
+	return pipz.Node{Identity: c.identity, Type: "categorize"}
 }
 
 // Close implements pipz.Chainable[*Thought].

@@ -18,6 +18,7 @@ import (
 // based on semantic understanding of the context. This enables gates based on meaning rather than.
 // simple data inspection.
 type Sift struct {
+	identity  pipz.Identity
 	key       string
 	question  string
 	processor pipz.Chainable[*Thought]
@@ -52,6 +53,7 @@ type Sift struct {
 //	fmt.Println("Escalated:", resp.Decision)
 func NewSift(key, question string, processor pipz.Chainable[*Thought]) *Sift {
 	return &Sift{
+		identity:         pipz.NewIdentity(key, "Semantic gate primitive"),
 		key:              key,
 		question:         question,
 		processor:        processor,
@@ -160,44 +162,13 @@ func (s *Sift) Process(ctx context.Context, t *Thought) (*Thought, error) {
 
 // runIntrospection executes the transform synapse for semantic summary.
 func (s *Sift) runIntrospection(ctx context.Context, t *Thought, resp zyn.BinaryResponse, originalNotes []Note, provider Provider) error {
-	transformSynapse, err := zyn.Transform(
-		"Synthesize gate decision into context for next reasoning step",
-		provider,
-	)
-	if err != nil {
-		return fmt.Errorf("sift: failed to create transform synapse: %w", err)
-	}
-
-	introspectionInput := s.buildIntrospectionInput(resp, originalNotes)
-
-	// Determine introspection temperature
-	introspectionTemp := DefaultIntrospectionTemperature
-	if s.introspectionTemperature != 0 {
-		introspectionTemp = s.introspectionTemperature
-	}
-	introspectionInput.Temperature = introspectionTemp
-
-	summary, err := transformSynapse.FireWithInput(ctx, t.Session, introspectionInput)
-	if err != nil {
-		return fmt.Errorf("sift: transform synapse execution failed: %w", err)
-	}
-
-	// Determine summary key
-	summaryKey := s.summaryKey
-	if summaryKey == "" {
-		summaryKey = s.key + "_summary"
-	}
-	if err := t.SetContent(ctx, summaryKey, summary, "sift-introspection"); err != nil {
-		return fmt.Errorf("sift: failed to persist introspection note: %w", err)
-	}
-
-	capitan.Emit(ctx, IntrospectionCompleted,
-		FieldTraceID.Field(t.TraceID),
-		FieldStepType.Field("sift"),
-		FieldContextSize.Field(len(summary)),
-	)
-
-	return nil
+	return runIntrospection(ctx, t, provider, s.buildIntrospectionInput(resp, originalNotes), introspectionConfig{
+		stepType:                 "sift",
+		key:                      s.key,
+		summaryKey:               s.summaryKey,
+		introspectionTemperature: s.introspectionTemperature,
+		synapsePrompt:            "Synthesize gate decision into context for next reasoning step",
+	})
 }
 
 // buildIntrospectionInput formats gate decision for the transform synapse.
@@ -230,9 +201,14 @@ func (s *Sift) emitFailed(ctx context.Context, t *Thought, start time.Time, err 
 	)
 }
 
-// Name implements pipz.Chainable[*Thought].
-func (s *Sift) Name() pipz.Name {
-	return pipz.Name(s.key)
+// Identity implements pipz.Chainable[*Thought].
+func (s *Sift) Identity() pipz.Identity {
+	return s.identity
+}
+
+// Schema implements pipz.Chainable[*Thought].
+func (s *Sift) Schema() pipz.Node {
+	return pipz.Node{Identity: s.identity, Type: "sift"}
 }
 
 // Close implements pipz.Chainable[*Thought].

@@ -14,6 +14,7 @@ import (
 // a single consolidated note. This enables self-compression for long reasoning chains,.
 // allowing the agent to "step back" and consolidate its accumulated context.
 type Reflect struct {
+	identity        pipz.Identity
 	key             string
 	prompt          string
 	unpublishedOnly bool
@@ -39,8 +40,9 @@ type Reflect struct {
 //	result, _ := reflect.Process(ctx, thought)
 func NewReflect(key string) *Reflect {
 	return &Reflect{
-		key:    key,
-		prompt: "Synthesize the accumulated context into key insights, decisions made, and important findings",
+		identity: pipz.NewIdentity(key, "Reflection primitive"),
+		key:      key,
+		prompt:   "Synthesize the accumulated context into key insights, decisions made, and important findings",
 	}
 }
 
@@ -126,9 +128,14 @@ func (r *Reflect) emitFailed(ctx context.Context, t *Thought, start time.Time, e
 	)
 }
 
-// Name implements pipz.Chainable[*Thought].
-func (r *Reflect) Name() pipz.Name {
-	return pipz.Name(r.key)
+// Identity implements pipz.Chainable[*Thought].
+func (r *Reflect) Identity() pipz.Identity {
+	return r.identity
+}
+
+// Schema implements pipz.Chainable[*Thought].
+func (r *Reflect) Schema() pipz.Node {
+	return pipz.Node{Identity: r.identity, Type: "reflect"}
 }
 
 // Close implements pipz.Chainable[*Thought].

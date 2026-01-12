@@ -25,6 +25,7 @@ type AmplifyResult struct {
 // Unlike pipz.Retry which retries on errors, Amplify iterates based on semantic quality.
 // Each iteration transforms the content, then checks if the result meets the specified criteria.
 type Amplify struct {
+	identity           pipz.Identity
 	key                string
 	sourceKey          string
 	refinementPrompt   string
@@ -68,6 +69,7 @@ func NewAmplify(key, sourceKey, refinementPrompt, completionCriteria string, max
 		maxIterations = 1
 	}
 	return &Amplify{
+		identity:           pipz.NewIdentity(key, "Iterative refinement primitive"),
 		key:                key,
 		sourceKey:          sourceKey,
 		refinementPrompt:   refinementPrompt,
@@ -230,9 +232,14 @@ func (a *Amplify) emitFailed(ctx context.Context, t *Thought, start time.Time, e
 	)
 }
 
-// Name implements pipz.Chainable[*Thought].
-func (a *Amplify) Name() pipz.Name {
-	return pipz.Name(a.key)
+// Identity implements pipz.Chainable[*Thought].
+func (a *Amplify) Identity() pipz.Identity {
+	return a.identity
+}
+
+// Schema implements pipz.Chainable[*Thought].
+func (a *Amplify) Schema() pipz.Node {
+	return pipz.Node{Identity: a.identity, Type: "amplify"}
 }
 
 // Close implements pipz.Chainable[*Thought].

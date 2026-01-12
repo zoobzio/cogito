@@ -14,6 +14,7 @@ import (
 // Analyze is a structured data extraction primitive that implements pipz.Chainable[*Thought].
 // It extracts typed data from unstructured input using generics.
 type Analyze[T zyn.Validator] struct {
+	identity                 pipz.Identity
 	key                      string
 	what                     string
 	summaryKey               string
@@ -48,6 +49,7 @@ type Analyze[T zyn.Validator] struct {
 //	fmt.Println(data.Severity, data.Component)
 func NewAnalyze[T zyn.Validator](key, what string) *Analyze[T] {
 	return &Analyze[T]{
+		identity:         pipz.NewIdentity(key, "Structured data extraction primitive"),
 		key:              key,
 		what:             what,
 		useIntrospection: DefaultIntrospection,
@@ -73,7 +75,7 @@ func (a *Analyze[T]) Process(ctx context.Context, t *Thought) (*Thought, error) 
 
 	// Get unpublished notes
 	unpublished := t.GetUnpublishedNotes()
-	context := RenderNotesToContext(unpublished)
+	noteContext := RenderNotesToContext(unpublished)
 
 	// Emit step started
 	capitan.Emit(ctx, StepStarted,
@@ -92,7 +94,7 @@ func (a *Analyze[T]) Process(ctx context.Context, t *Thought) (*Thought, error) 
 
 	// PHASE 1: REASONING - Extract structured data
 	extracted, err := extractSynapse.FireWithInput(ctx, t.Session, zyn.ExtractionInput{
-		Text:        context,
+		Text:        noteContext,
 		Temperature: reasoningTemp,
 	})
 	if err != nil {
@@ -137,44 +139,13 @@ func (a *Analyze[T]) Process(ctx context.Context, t *Thought) (*Thought, error) 
 
 // runIntrospection executes the transform synapse for semantic summary.
 func (a *Analyze[T]) runIntrospection(ctx context.Context, t *Thought, extracted T, originalNotes []Note, provider Provider) error {
-	transformSynapse, err := zyn.Transform(
-		"Synthesize extracted data into context for next reasoning step",
-		provider,
-	)
-	if err != nil {
-		return fmt.Errorf("analyze: failed to create transform synapse: %w", err)
-	}
-
-	introspectionInput := a.buildIntrospectionInput(extracted, originalNotes)
-
-	// Determine introspection temperature
-	introspectionTemp := DefaultIntrospectionTemperature
-	if a.introspectionTemperature != 0 {
-		introspectionTemp = a.introspectionTemperature
-	}
-	introspectionInput.Temperature = introspectionTemp
-
-	summary, err := transformSynapse.FireWithInput(ctx, t.Session, introspectionInput)
-	if err != nil {
-		return fmt.Errorf("analyze: transform synapse execution failed: %w", err)
-	}
-
-	// Determine summary key
-	summaryKey := a.summaryKey
-	if summaryKey == "" {
-		summaryKey = a.key + "_summary"
-	}
-	if err := t.SetContent(ctx, summaryKey, summary, "analyze-introspection"); err != nil {
-		return fmt.Errorf("analyze: failed to persist introspection note: %w", err)
-	}
-
-	capitan.Emit(ctx, IntrospectionCompleted,
-		FieldTraceID.Field(t.TraceID),
-		FieldStepType.Field("analyze"),
-		FieldContextSize.Field(len(summary)),
-	)
-
-	return nil
+	return runIntrospection(ctx, t, provider, a.buildIntrospectionInput(extracted, originalNotes), introspectionConfig{
+		stepType:                 "analyze",
+		key:                      a.key,
+		summaryKey:               a.summaryKey,
+		introspectionTemperature: a.introspectionTemperature,
+		synapsePrompt:            "Synthesize extracted data into context for next reasoning step",
+	})
 }
 
 // buildIntrospectionInput formats extracted data for the transform synapse.
@@ -205,9 +176,14 @@ func (a *Analyze[T]) emitFailed(ctx context.Context, t *Thought, start time.Time
 	)
 }
 
-// Name implements pipz.Chainable[*Thought].
-func (a *Analyze[T]) Name() pipz.Name {
-	return pipz.Name(a.key)
+// Identity implements pipz.Chainable[*Thought].
+func (a *Analyze[T]) Identity() pipz.Identity {
+	return a.identity
+}
+
+// Schema implements pipz.Chainable[*Thought].
+func (a *Analyze[T]) Schema() pipz.Node {
+	return pipz.Node{Identity: a.identity, Type: "analyze"}
 }
 
 // Close implements pipz.Chainable[*Thought].

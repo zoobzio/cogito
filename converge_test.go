@@ -40,10 +40,29 @@ func (m *mockConvergeProvider) Name() string {
 
 // analysisProcessor simulates a specific analysis type.
 type analysisProcessor struct {
+	identity   pipz.Identity
 	name       string
 	output     string
 	delay      time.Duration
 	shouldFail bool
+}
+
+func newAnalysisProcessor(name, output string) *analysisProcessor {
+	return &analysisProcessor{
+		identity: pipz.NewIdentity(name, "Analysis processor for "+name),
+		name:     name,
+		output:   output,
+	}
+}
+
+func (a *analysisProcessor) withDelay(d time.Duration) *analysisProcessor {
+	a.delay = d
+	return a
+}
+
+func (a *analysisProcessor) withFail() *analysisProcessor {
+	a.shouldFail = true
+	return a
 }
 
 func (a *analysisProcessor) Process(ctx context.Context, t *Thought) (*Thought, error) {
@@ -59,8 +78,12 @@ func (a *analysisProcessor) Process(ctx context.Context, t *Thought) (*Thought, 
 	return t, nil
 }
 
-func (a *analysisProcessor) Name() pipz.Name {
-	return pipz.Name(a.name)
+func (a *analysisProcessor) Identity() pipz.Identity {
+	return a.identity
+}
+
+func (a *analysisProcessor) Schema() pipz.Node {
+	return pipz.Node{Identity: a.identity, Type: "analysis-processor"}
 }
 
 func (a *analysisProcessor) Close() error {
@@ -72,9 +95,9 @@ func TestConvergeBasic(t *testing.T) {
 	SetProvider(provider)
 	defer SetProvider(nil)
 
-	technical := &analysisProcessor{name: "technical", output: "CPU usage high"}
-	business := &analysisProcessor{name: "business", output: "Priority: high"}
-	risk := &analysisProcessor{name: "risk", output: "Downtime risk: medium"}
+	technical := newAnalysisProcessor("technical", "CPU usage high")
+	business := newAnalysisProcessor("business", "Priority: high")
+	risk := newAnalysisProcessor("risk", "Downtime risk: medium")
 
 	converge := NewConverge(
 		"unified_analysis",
@@ -140,9 +163,9 @@ func TestConvergeParallelExecution(t *testing.T) {
 	defer SetProvider(nil)
 
 	// Each processor has a delay to verify they run in parallel
-	fast := &analysisProcessor{name: "fast", output: "Fast result", delay: 10 * time.Millisecond}
-	medium := &analysisProcessor{name: "medium", output: "Medium result", delay: 20 * time.Millisecond}
-	slow := &analysisProcessor{name: "slow", output: "Slow result", delay: 30 * time.Millisecond}
+	fast := newAnalysisProcessor("fast", "Fast result").withDelay(10 * time.Millisecond)
+	medium := newAnalysisProcessor("medium", "Medium result").withDelay(20 * time.Millisecond)
+	slow := newAnalysisProcessor("slow", "Slow result").withDelay(30 * time.Millisecond)
 
 	converge := NewConverge(
 		"parallel_test",
@@ -182,9 +205,9 @@ func TestConvergePartialFailure(t *testing.T) {
 	SetProvider(provider)
 	defer SetProvider(nil)
 
-	success1 := &analysisProcessor{name: "success1", output: "Success 1"}
-	failing := &analysisProcessor{name: "failing", output: "", shouldFail: true}
-	success2 := &analysisProcessor{name: "success2", output: "Success 2"}
+	success1 := newAnalysisProcessor("success1", "Success 1")
+	failing := newAnalysisProcessor("failing", "").withFail()
+	success2 := newAnalysisProcessor("success2", "Success 2")
 
 	converge := NewConverge(
 		"partial_failure_test",
@@ -229,8 +252,8 @@ func TestConvergeAllBranchesFail(t *testing.T) {
 	SetProvider(provider)
 	defer SetProvider(nil)
 
-	failing1 := &analysisProcessor{name: "failing1", output: "", shouldFail: true}
-	failing2 := &analysisProcessor{name: "failing2", output: "", shouldFail: true}
+	failing1 := newAnalysisProcessor("failing1", "").withFail()
+	failing2 := newAnalysisProcessor("failing2", "").withFail()
 
 	converge := NewConverge(
 		"all_fail_test",
@@ -281,7 +304,7 @@ func TestConvergeBuilderMethods(t *testing.T) {
 	SetProvider(provider)
 	defer SetProvider(nil)
 
-	processor := &analysisProcessor{name: "test", output: "Test output"}
+	processor := newAnalysisProcessor("test", "Test output")
 	converge := NewConverge("test_converge", "Synthesize").
 		WithTemperature(0.5).
 		WithSynthesisTemperature(0.8).
@@ -310,9 +333,9 @@ func TestConvergeProcessorManagement(t *testing.T) {
 	SetProvider(provider)
 	defer SetProvider(nil)
 
-	p1 := &analysisProcessor{name: "p1", output: "P1 output"}
-	p2 := &analysisProcessor{name: "p2", output: "P2 output"}
-	p3 := &analysisProcessor{name: "p3", output: "P3 output"}
+	p1 := newAnalysisProcessor("p1", "P1 output")
+	p2 := newAnalysisProcessor("p2", "P2 output")
+	p3 := newAnalysisProcessor("p3", "P3 output")
 
 	converge := NewConverge("test_converge", "Synthesize", p1, p2)
 
@@ -330,7 +353,7 @@ func TestConvergeProcessorManagement(t *testing.T) {
 	}
 
 	// Test RemoveProcessor
-	converge.RemoveProcessor("p2")
+	converge.RemoveProcessor(p2.Identity())
 	processors = converge.Processors()
 	if len(processors) != 2 {
 		t.Errorf("expected 2 processors after remove, got %d", len(processors))
@@ -338,7 +361,7 @@ func TestConvergeProcessorManagement(t *testing.T) {
 
 	// Verify p2 was removed
 	for _, p := range processors {
-		if p.Name() == "p2" {
+		if p.Identity().Name() == "p2" {
 			t.Error("p2 should have been removed")
 		}
 	}
@@ -354,13 +377,13 @@ func TestConvergeProcessorManagement(t *testing.T) {
 func TestConvergeName(t *testing.T) {
 	converge := NewConverge("my_synthesis", "Synthesize")
 
-	if converge.Name() != "my_synthesis" {
-		t.Errorf("expected name 'my_synthesis', got %q", converge.Name())
+	if converge.Identity().Name() != "my_synthesis" {
+		t.Errorf("expected name 'my_synthesis', got %q", converge.Identity().Name())
 	}
 }
 
 func TestConvergeClose(t *testing.T) {
-	processor := &analysisProcessor{name: "test", output: "Test output"}
+	processor := newAnalysisProcessor("test", "Test output")
 	converge := NewConverge("test_converge", "Synthesize", processor)
 
 	err := converge.Close()
@@ -375,8 +398,8 @@ func TestConvergeThoughtIsolation(t *testing.T) {
 	defer SetProvider(nil)
 
 	// Create processors that modify thought differently
-	p1 := &analysisProcessor{name: "branch1", output: "Branch 1 specific output"}
-	p2 := &analysisProcessor{name: "branch2", output: "Branch 2 specific output"}
+	p1 := newAnalysisProcessor("branch1", "Branch 1 specific output")
+	p2 := newAnalysisProcessor("branch2", "Branch 2 specific output")
 
 	converge := NewConverge("isolation_test", "Synthesize", p1, p2)
 

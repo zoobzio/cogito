@@ -15,7 +15,8 @@ import (
 // It creates a new Thought with the current one as its parent, copies all notes,
 // and returns the new Thought. The original Thought is preserved unchanged in the database.
 type Checkpoint struct {
-	key string
+	key      string
+	identity pipz.Identity
 }
 
 // NewCheckpoint creates a new checkpoint primitive.
@@ -36,7 +37,8 @@ type Checkpoint struct {
 //	)
 func NewCheckpoint(key string) *Checkpoint {
 	return &Checkpoint{
-		key: key,
+		key:      key,
+		identity: pipz.NewIdentity(key, "Checkpoint primitive"),
 	}
 }
 
@@ -126,9 +128,14 @@ func (c *Checkpoint) Process(ctx context.Context, t *Thought) (*Thought, error) 
 	return newThought, nil
 }
 
-// Name implements pipz.Chainable[*Thought].
-func (c *Checkpoint) Name() pipz.Name {
-	return pipz.Name(c.key)
+// Identity implements pipz.Chainable[*Thought].
+func (c *Checkpoint) Identity() pipz.Identity {
+	return c.identity
+}
+
+// Schema implements pipz.Chainable[*Thought].
+func (c *Checkpoint) Schema() pipz.Node {
+	return pipz.Node{Identity: c.identity, Type: "checkpoint"}
 }
 
 // Close implements pipz.Chainable[*Thought].

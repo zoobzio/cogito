@@ -19,6 +19,7 @@ import (
 // Unlike pipz.Concurrent which uses a programmatic reducer, Converge uses semantic synthesis
 // to merge perspectives intelligently based on meaning rather than simple aggregation.
 type Converge struct {
+	identity        pipz.Identity
 	key             string
 	synthesisPrompt string
 	processors      []pipz.Chainable[*Thought]
@@ -54,6 +55,7 @@ type Converge struct {
 //	fmt.Println(synthesis)
 func NewConverge(key, synthesisPrompt string, processors ...pipz.Chainable[*Thought]) *Converge {
 	return &Converge{
+		identity:        pipz.NewIdentity(key, "Parallel synthesis connector"),
 		key:             key,
 		synthesisPrompt: synthesisPrompt,
 		processors:      processors,
@@ -63,9 +65,9 @@ func NewConverge(key, synthesisPrompt string, processors ...pipz.Chainable[*Thou
 
 // branchResult captures the outcome of a single parallel branch.
 type branchResult struct {
-	name   pipz.Name
-	result *Thought
-	err    error
+	identity pipz.Identity
+	result   *Thought
+	err      error
 }
 
 // Process implements pipz.Chainable[*Thought].
@@ -114,7 +116,7 @@ func (c *Converge) Process(ctx context.Context, t *Thought) (*Thought, error) {
 			capitan.Emit(ctx, ConvergeBranchStarted,
 				FieldTraceID.Field(t.TraceID),
 				FieldStepName.Field(c.key),
-				FieldBranchName.Field(string(p.Name())),
+				FieldBranchName.Field(p.Identity().Name()),
 			)
 
 			// Clone thought for isolated processing
@@ -127,14 +129,14 @@ func (c *Converge) Process(ctx context.Context, t *Thought) (*Thought, error) {
 			capitan.Emit(ctx, ConvergeBranchCompleted,
 				FieldTraceID.Field(t.TraceID),
 				FieldStepName.Field(c.key),
-				FieldBranchName.Field(string(p.Name())),
+				FieldBranchName.Field(p.Identity().Name()),
 				FieldError.Field(err),
 			)
 
 			results <- branchResult{
-				name:   p.Name(),
-				result: result,
-				err:    err,
+				identity: p.Identity(),
+				result:   result,
+				err:      err,
 			}
 		}(processor)
 	}
@@ -146,14 +148,14 @@ func (c *Converge) Process(ctx context.Context, t *Thought) (*Thought, error) {
 	}()
 
 	// Collect results
-	branchResults := make(map[pipz.Name]*Thought)
+	branchResults := make(map[pipz.Identity]*Thought)
 	var branchErrors []error
 
 	for br := range results {
 		if br.err != nil {
-			branchErrors = append(branchErrors, fmt.Errorf("branch %q: %w", br.name, br.err))
+			branchErrors = append(branchErrors, fmt.Errorf("branch %q: %w", br.identity.Name(), br.err))
 		} else {
-			branchResults[br.name] = br.result
+			branchResults[br.identity] = br.result
 		}
 	}
 
@@ -169,15 +171,15 @@ func (c *Converge) Process(ctx context.Context, t *Thought) (*Thought, error) {
 
 	// Copy notes from successful branches to the original thought
 	// Only copy notes added after the original note count (new notes from branch processing)
-	for name, branchThought := range branchResults {
+	for identity, branchThought := range branchResults {
 		branchNotes := branchThought.AllNotes()
 		for i := originalNoteCount; i < len(branchNotes); i++ {
 			note := branchNotes[i]
 			// Tag the source with branch name
-			taggedSource := fmt.Sprintf("%s[%s]", note.Source, name)
+			taggedSource := fmt.Sprintf("%s[%s]", note.Source, identity.Name())
 			if setErr := t.SetNote(ctx, note.Key, note.Content, taggedSource, note.Metadata); setErr != nil {
 				c.emitFailed(ctx, t, start, setErr)
-				return t, fmt.Errorf("converge: failed to merge note from branch %q: %w", name, setErr)
+				return t, fmt.Errorf("converge: failed to merge note from branch %q: %w", identity.Name(), setErr)
 			}
 		}
 	}
@@ -237,13 +239,13 @@ func (c *Converge) Process(ctx context.Context, t *Thought) (*Thought, error) {
 
 // buildMergedContext creates a formatted context from all branch results.
 // originalNoteCount is used to filter out notes that existed before branching.
-func (c *Converge) buildMergedContext(branchResults map[pipz.Name]*Thought, originalNoteCount int) string {
+func (c *Converge) buildMergedContext(branchResults map[pipz.Identity]*Thought, originalNoteCount int) string {
 	var builder strings.Builder
 
 	builder.WriteString("=== PARALLEL ANALYSIS RESULTS ===\n\n")
 
-	for name, branchThought := range branchResults {
-		builder.WriteString(fmt.Sprintf("--- Branch: %s ---\n", name))
+	for identity, branchThought := range branchResults {
+		builder.WriteString(fmt.Sprintf("--- Branch: %s ---\n", identity.Name()))
 
 		// Get notes created by this branch (after original notes)
 		branchNotes := branchThought.AllNotes()
@@ -268,9 +270,14 @@ func (c *Converge) emitFailed(ctx context.Context, t *Thought, start time.Time, 
 	)
 }
 
-// Name implements pipz.Chainable[*Thought].
-func (c *Converge) Name() pipz.Name {
-	return pipz.Name(c.key)
+// Identity implements pipz.Chainable[*Thought].
+func (c *Converge) Identity() pipz.Identity {
+	return c.identity
+}
+
+// Schema implements pipz.Chainable[*Thought].
+func (c *Converge) Schema() pipz.Node {
+	return pipz.Node{Identity: c.identity, Type: "converge"}
 }
 
 // Close implements pipz.Chainable[*Thought].
@@ -282,7 +289,7 @@ func (c *Converge) Close() error {
 	var errs []error
 	for _, p := range c.processors {
 		if err := p.Close(); err != nil {
-			errs = append(errs, fmt.Errorf("processor %q: %w", p.Name(), err))
+			errs = append(errs, fmt.Errorf("processor %q: %w", p.Identity().Name(), err))
 		}
 	}
 
@@ -328,13 +335,13 @@ func (c *Converge) AddProcessor(processor pipz.Chainable[*Thought]) *Converge {
 	return c
 }
 
-// RemoveProcessor removes a processor by name.
-func (c *Converge) RemoveProcessor(name pipz.Name) *Converge {
+// RemoveProcessor removes a processor by identity.
+func (c *Converge) RemoveProcessor(identity pipz.Identity) *Converge {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	for i, p := range c.processors {
-		if p.Name() == name {
+		if p.Identity() == identity {
 			c.processors = append(c.processors[:i], c.processors[i+1:]...)
 			break
 		}

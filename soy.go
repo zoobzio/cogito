@@ -6,30 +6,33 @@ import (
 	"time"
 
 	"github.com/jmoiron/sqlx"
-	"github.com/zoobzio/cereal"
+	"github.com/zoobzio/astql/postgres"
+	"github.com/zoobzio/soy"
 	"github.com/zoobzio/zyn"
 )
 
-// CerealMemory implements Memory using cereal for persistence.
-type CerealMemory struct {
-	thoughts *cereal.Cereal[Thought]
-	notes    *cereal.Cereal[Note]
+// SoyMemory implements Memory using soy for persistence.
+type SoyMemory struct {
+	thoughts *soy.Soy[Thought]
+	notes    *soy.Soy[Note]
 	db       *sqlx.DB
 }
 
-// NewCerealMemory creates a new cereal-backed Memory implementation.
-func NewCerealMemory(db *sqlx.DB) (*CerealMemory, error) {
-	thoughts, err := cereal.New[Thought](db, "thoughts")
+// NewSoyMemory creates a new soy-backed Memory implementation.
+func NewSoyMemory(db *sqlx.DB) (*SoyMemory, error) {
+	renderer := postgres.New()
+
+	thoughts, err := soy.New[Thought](db, "thoughts", renderer)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize thoughts table: %w", err)
 	}
 
-	notes, err := cereal.New[Note](db, "notes")
+	notes, err := soy.New[Note](db, "notes", renderer)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize notes table: %w", err)
 	}
 
-	return &CerealMemory{
+	return &SoyMemory{
 		thoughts: thoughts,
 		notes:    notes,
 		db:       db,
@@ -37,7 +40,7 @@ func NewCerealMemory(db *sqlx.DB) (*CerealMemory, error) {
 }
 
 // CreateThought persists a new thought and returns it with ID populated.
-func (m *CerealMemory) CreateThought(ctx context.Context, thought *Thought) (*Thought, error) {
+func (m *SoyMemory) CreateThought(ctx context.Context, thought *Thought) (*Thought, error) {
 	inserted, err := m.thoughts.Insert().Exec(ctx, thought)
 	if err != nil {
 		return nil, fmt.Errorf("failed to insert thought: %w", err)
@@ -46,7 +49,7 @@ func (m *CerealMemory) CreateThought(ctx context.Context, thought *Thought) (*Th
 }
 
 // GetThought loads a thought by ID, including all its notes.
-func (m *CerealMemory) GetThought(ctx context.Context, id string) (*Thought, error) {
+func (m *SoyMemory) GetThought(ctx context.Context, id string) (*Thought, error) {
 	thought, err := m.thoughts.Select().
 		Where("id", "=", "id").
 		Exec(ctx, map[string]any{"id": id})
@@ -63,7 +66,7 @@ func (m *CerealMemory) GetThought(ctx context.Context, id string) (*Thought, err
 }
 
 // GetThoughtByTraceID loads a thought by trace ID, including all its notes.
-func (m *CerealMemory) GetThoughtByTraceID(ctx context.Context, traceID string) (*Thought, error) {
+func (m *SoyMemory) GetThoughtByTraceID(ctx context.Context, traceID string) (*Thought, error) {
 	thought, err := m.thoughts.Select().
 		Where("trace_id", "=", "trace_id").
 		Exec(ctx, map[string]any{"trace_id": traceID})
@@ -80,7 +83,7 @@ func (m *CerealMemory) GetThoughtByTraceID(ctx context.Context, traceID string) 
 }
 
 // GetThoughtsByTaskID loads all thoughts for a task, ordered by creation time.
-func (m *CerealMemory) GetThoughtsByTaskID(ctx context.Context, taskID string) ([]*Thought, error) {
+func (m *SoyMemory) GetThoughtsByTaskID(ctx context.Context, taskID string) ([]*Thought, error) {
 	thoughts, err := m.thoughts.Query().
 		Where("task_id", "=", "task_id").
 		OrderBy("created_at", "asc").
@@ -100,7 +103,7 @@ func (m *CerealMemory) GetThoughtsByTaskID(ctx context.Context, taskID string) (
 }
 
 // GetChildThoughts loads all thoughts that have the given thought as parent.
-func (m *CerealMemory) GetChildThoughts(ctx context.Context, parentID string) ([]*Thought, error) {
+func (m *SoyMemory) GetChildThoughts(ctx context.Context, parentID string) ([]*Thought, error) {
 	thoughts, err := m.thoughts.Query().
 		Where("parent_id", "=", "parent_id").
 		OrderBy("created_at", "asc").
@@ -120,7 +123,7 @@ func (m *CerealMemory) GetChildThoughts(ctx context.Context, parentID string) ([
 }
 
 // AddNote persists a note and returns it with ID populated.
-func (m *CerealMemory) AddNote(ctx context.Context, note *Note) (*Note, error) {
+func (m *SoyMemory) AddNote(ctx context.Context, note *Note) (*Note, error) {
 	inserted, err := m.notes.Insert().Exec(ctx, note)
 	if err != nil {
 		return nil, fmt.Errorf("failed to insert note: %w", err)
@@ -129,7 +132,7 @@ func (m *CerealMemory) AddNote(ctx context.Context, note *Note) (*Note, error) {
 }
 
 // GetNotes loads all notes for a thought.
-func (m *CerealMemory) GetNotes(ctx context.Context, thoughtID string) ([]Note, error) {
+func (m *SoyMemory) GetNotes(ctx context.Context, thoughtID string) ([]Note, error) {
 	notePtrs, err := m.notes.Query().
 		Where("thought_id", "=", "thought_id").
 		OrderBy("created", "asc").
@@ -147,7 +150,7 @@ func (m *CerealMemory) GetNotes(ctx context.Context, thoughtID string) ([]Note, 
 }
 
 // UpdateThought updates thought metadata (timestamps, publishedCount).
-func (m *CerealMemory) UpdateThought(ctx context.Context, thought *Thought) error {
+func (m *SoyMemory) UpdateThought(ctx context.Context, thought *Thought) error {
 	_, err := m.thoughts.Modify().
 		Set("updated_at", "updated_at").
 		Where("id", "=", "id").
@@ -162,7 +165,7 @@ func (m *CerealMemory) UpdateThought(ctx context.Context, thought *Thought) erro
 }
 
 // DeleteThought removes a thought and all its notes.
-func (m *CerealMemory) DeleteThought(ctx context.Context, id string) error {
+func (m *SoyMemory) DeleteThought(ctx context.Context, id string) error {
 	// Delete notes first (foreign key constraint)
 	_, err := m.notes.Remove().
 		Where("thought_id", "=", "thought_id").
@@ -183,7 +186,7 @@ func (m *CerealMemory) DeleteThought(ctx context.Context, id string) error {
 }
 
 // hydrateThought loads notes and session state into a thought.
-func (m *CerealMemory) hydrateThought(ctx context.Context, thought *Thought) error {
+func (m *SoyMemory) hydrateThought(ctx context.Context, thought *Thought) error {
 	notes, err := m.GetNotes(ctx, thought.ID)
 	if err != nil {
 		return err
@@ -204,14 +207,14 @@ func (m *CerealMemory) hydrateThought(ctx context.Context, thought *Thought) err
 }
 
 // Close closes the underlying database connection.
-func (m *CerealMemory) Close() error {
+func (m *SoyMemory) Close() error {
 	return m.db.Close()
 }
 
 // SearchNotes finds notes semantically similar to the query embedding.
 // Returns notes ordered by similarity, limited to the specified count.
 // Notes without embeddings are excluded from results.
-func (m *CerealMemory) SearchNotes(ctx context.Context, embedding Vector, limit int) ([]NoteWithThought, error) {
+func (m *SoyMemory) SearchNotes(ctx context.Context, embedding Vector, limit int) ([]NoteWithThought, error) {
 	// Query notes ordered by vector distance
 	notes, err := m.notes.Query().
 		WhereNotNull("embedding").
@@ -271,7 +274,7 @@ func (m *CerealMemory) SearchNotes(ctx context.Context, embedding Vector, limit 
 // SearchNotesByTask finds the most relevant note per task.
 // Returns the most recent thought for each task that has matching notes.
 // Notes without embeddings are excluded from results.
-func (m *CerealMemory) SearchNotesByTask(ctx context.Context, embedding Vector, limit int) ([]*Thought, error) {
+func (m *SoyMemory) SearchNotesByTask(ctx context.Context, embedding Vector, limit int) ([]*Thought, error) {
 	// Query notes ordered by vector distance (fetch more to ensure coverage across tasks)
 	notes, err := m.notes.Query().
 		WhereNotNull("embedding").
@@ -396,4 +399,4 @@ func (m *CerealMemory) SearchNotesByTask(ctx context.Context, embedding Vector, 
 	return results, nil
 }
 
-var _ Memory = (*CerealMemory)(nil)
+var _ Memory = (*SoyMemory)(nil)

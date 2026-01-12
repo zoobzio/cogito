@@ -75,6 +75,8 @@ changelog:
       - "^merge"
       - "^wip"
       - "^WIP"
+      - "^docs:"
+      - "^test:"
 
 # Release configuration
 release:

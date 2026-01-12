@@ -7,8 +7,8 @@ import (
 
 func TestRecall_Name(t *testing.T) {
 	recall := NewRecall("my_recall", "some-id")
-	if recall.Name() != "my_recall" {
-		t.Errorf("expected name 'my_recall', got %q", recall.Name())
+	if recall.Identity().Name() != "my_recall" {
+		t.Errorf("expected name 'my_recall', got %q", recall.Identity().Name())
 	}
 }
 

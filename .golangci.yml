@@ -1,3 +1,5 @@
+version: "2"
+
 run:
   timeout: 5m
   tests: true
@@ -18,7 +20,6 @@ linters:
     - ineffassign  # Detect ineffectual assignments
     - staticcheck  # Advanced static analysis
     - unused       # Unused code detection
-    - typecheck    # Type checking
 
     # Error handling
     - errcheck     # Unchecked errors
@@ -33,164 +34,172 @@ linters:
     - goconst      # Repeated strings as constants
     - godot        # Comment sentences
     - godox        # TODO/FIXME comments
-    - gofmt        # Formatting
-    - goimports    # Import organization
     - misspell     # Spelling mistakes
     - nakedret     # Naked returns
     - prealloc     # Slice capacity hints
     - predeclared  # Shadowing predeclared identifiers
     - copyloopvar  # Loop variable capture (replacement for deprecated exportloopref)
 
-linters-settings:
-  gosec:
-    severity: medium
-    confidence: medium
-    excludes:
-      - G104  # We'll use errcheck instead
-    config:
-      global:
-        audit: true
+  settings:
+    gosec:
+      severity: medium
+      confidence: medium
+      excludes:
+        - G104  # We'll use errcheck instead
+      config:
+        global:
+          audit: true
 
-  govet:
-    enable-all: true
-    disable:
-      - fieldalignment  # Performance optimization, not critical for correctness
+    govet:
+      enable-all: true
+      disable:
+        - fieldalignment  # Performance optimization, not critical for correctness
 
-  errcheck:
-    check-type-assertions: true
-    check-blank: true
-    exclude-functions:
-      - (io.Closer).Close  # Handled by bodyclose
-      - (github.com/zoobzio/capitan.Capitan).Emit  # Fire-and-forget pattern
+    errcheck:
+      check-type-assertions: true
+      check-blank: true
+      exclude-functions:
+        - (io.Closer).Close  # Handled by bodyclose
+        - (github.com/zoobzio/capitan.Capitan).Emit  # Fire-and-forget pattern
 
-  gocritic:
-    enabled-checks:
-      # Only non-default checks
-      - commentedOutCode
-      - deferInLoop
-      - emptyFallthrough
-      - emptyStringTest
-      - equalFold
-      - evalOrder
-      - exposedSyncMutex
-      - externalErrorReassign
-      - filepathJoin
-      - hexLiteral
-      - httpNoBody
-      - importShadow
-      - indexAlloc
-      - initClause
-      - nestingReduce
-      - nilValReturn
-      - octalLiteral
-      - preferFilepathJoin
-      - preferFprint
-      - preferStringWriter
-      - preferWriteByte
-      - rangeExprCopy
-      # rangeValCopy disabled - Note struct copies are acceptable
-      - redundantSprint
-      - regexpPattern
-      - regexpSimplify
-      - ruleguard
-      - sloppyReassign
-      - sortSlice
-      - sprintfQuotedString
-      - sqlQuery
-      - stringConcatSimplify
-      - stringXbytes
-      - syncMapLoadAndDelete
-      - truncateCmp
-      - typeAssertChain
-      - typeDefFirst
-      - typeUnparen
-      - unlabelStmt
-      - unnamedResult
-      - unnecessaryBlock
-      - unnecessaryDefer
-      - weakCond
-      - yodaStyleExpr
+    gocritic:
+      enabled-checks:
+        # Only non-default checks
+        - commentedOutCode
+        - deferInLoop
+        - emptyFallthrough
+        - emptyStringTest
+        - equalFold
+        - evalOrder
+        - exposedSyncMutex
+        - externalErrorReassign
+        - filepathJoin
+        - hexLiteral
+        - httpNoBody
+        - importShadow
+        - indexAlloc
+        - initClause
+        - nestingReduce
+        - nilValReturn
+        - octalLiteral
+        - preferFilepathJoin
+        - preferFprint
+        - preferStringWriter
+        - preferWriteByte
+        - rangeExprCopy
+        # rangeValCopy disabled - Note struct copies are acceptable
+        - redundantSprint
+        - regexpPattern
+        - regexpSimplify
+        - ruleguard
+        - sloppyReassign
+        - sortSlice
+        - sprintfQuotedString
+        - sqlQuery
+        - stringConcatSimplify
+        - stringXbytes
+        - syncMapLoadAndDelete
+        - truncateCmp
+        - typeAssertChain
+        - typeDefFirst
+        - typeUnparen
+        - unlabelStmt
+        - unnamedResult
+        - unnecessaryBlock
+        - unnecessaryDefer
+        - weakCond
+        - yodaStyleExpr
 
-  revive:
-    severity: warning
+    revive:
+      severity: warning
+      rules:
+        - name: blank-imports
+        - name: context-as-argument
+        - name: context-keys-type
+        - name: dot-imports
+        - name: empty-block
+        - name: error-naming
+        - name: error-return
+        - name: error-strings
+        - name: errorf
+        - name: exported
+        - name: if-return
+        - name: increment-decrement
+        - name: indent-error-flow
+        - name: modifies-parameter
+        - name: modifies-value-receiver
+        - name: package-comments
+        - name: range
+        - name: receiver-naming
+        - name: redefines-builtin-id
+        - name: string-of-int
+        - name: superfluous-else
+        - name: time-naming
+        - name: unexported-return
+        - name: unnecessary-stmt
+        - name: unreachable-code
+        # Disabled: many interface implementations don't use all parameters
+        # - name: unused-parameter
+        # Disabled: Close() methods often don't need receiver
+        # - name: unused-receiver
+        - name: useless-break
+        - name: var-declaration
+        - name: var-naming
+
+    dupl:
+      threshold: 150
+
+    goconst:
+      min-len: 3
+      min-occurrences: 3
+
+    misspell:
+      locale: US
+
+  exclusions:
+    # Presets to use
+    presets:
+      - comments
+      - std-error-handling
+
+    # Path exclusions
+    paths:
+      - third_party
+      - testdata
+      - vendor
+
+    # Custom exclusion rules
     rules:
-      - name: blank-imports
-      - name: context-as-argument
-      - name: context-keys-type
-      - name: dot-imports
-      - name: empty-block
-      - name: error-naming
-      - name: error-return
-      - name: error-strings
-      - name: errorf
-      - name: exported
-      - name: if-return
-      - name: increment-decrement
-      - name: indent-error-flow
-      - name: modifies-parameter
-      - name: modifies-value-receiver
-      - name: package-comments
-      - name: range
-      - name: receiver-naming
-      - name: redefines-builtin-id
-      - name: string-of-int
-      - name: superfluous-else
-      - name: time-naming
-      - name: unexported-return
-      - name: unnecessary-stmt
-      - name: unreachable-code
-      # Disabled: many interface implementations don't use all parameters
-      # - name: unused-parameter
-      # Disabled: Close() methods often don't need receiver
-      # - name: unused-receiver
-      - name: useless-break
-      - name: var-declaration
-      - name: var-naming
+      # Allow TODO comments in development
+      - linters:
+          - godox
+        text: "TODO|FIXME|BUG"
 
-  dupl:
-    # Set higher threshold to allow intentional similar patterns
-    # like runIntrospection methods across primitives
-    threshold: 200
+      # Test files can have longer functions and different struct ordering
+      - path: _test\.go
+        linters:
+          - funlen
+          - goconst
+          - dupl
+          - govet
+          - errcheck
+          - gocritic
 
-  goconst:
-    min-len: 3
-    min-occurrences: 3
+      # Allow common string patterns without constants
+      - linters:
+          - goconst
+        text: "Reasoning:"
+      - linters:
+          - goconst
+        text: "yes"
 
-  misspell:
-    locale: US
+      # Allow shadow in goroutines where it's intentional (converge.go parallel processing)
+      - path: converge\.go
+        linters:
+          - govet
+        text: "declaration of .err. shadows"
 
 issues:
-  exclude-dirs-use-default: false
-  exclude-rules:
-    # Allow TODO comments in development
-    - linters:
-        - godox
-      text: "TODO|FIXME|BUG"
-
-    # Test files can have longer functions and different struct ordering
-    - path: _test\.go
-      linters:
-        - funlen
-        - goconst
-        - dupl
-        - govet
-        - errcheck
-        - gocritic
-
-    # Allow common string patterns without constants
-    - linters:
-        - goconst
-      text: "Reasoning:"
-    - linters:
-        - goconst
-      text: "yes"
-
-    # Allow shadow in goroutines where it's intentional (converge.go parallel processing)
-    - path: converge\.go
-      linters:
-        - govet
-      text: "declaration of .err. shadows"
-
   # Maximum issues count per one linter
   max-issues-per-linter: 0
 

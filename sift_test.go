@@ -54,8 +54,16 @@ func (m *mockSiftProvider) Name() string {
 
 // mockProcessor tracks whether it was executed.
 type mockProcessor struct {
+	identity pipz.Identity
 	executed bool
 	name     string
+}
+
+func newMockProcessor(name string) *mockProcessor {
+	return &mockProcessor{
+		identity: pipz.NewIdentity(name, "Mock processor for "+name),
+		name:     name,
+	}
 }
 
 func (m *mockProcessor) Process(ctx context.Context, t *Thought) (*Thought, error) {
@@ -64,8 +72,12 @@ func (m *mockProcessor) Process(ctx context.Context, t *Thought) (*Thought, erro
 	return t, nil
 }
 
-func (m *mockProcessor) Name() pipz.Name {
-	return pipz.Name(m.name)
+func (m *mockProcessor) Identity() pipz.Identity {
+	return m.identity
+}
+
+func (m *mockProcessor) Schema() pipz.Node {
+	return pipz.Node{Identity: m.identity, Type: "mock-processor"}
 }
 
 func (m *mockProcessor) Close() error {
@@ -77,7 +89,7 @@ func TestSiftGateOpens(t *testing.T) {
 	SetProvider(provider)
 	defer SetProvider(nil)
 
-	processor := &mockProcessor{name: "test-processor"}
+	processor := newMockProcessor("test-processor")
 	sift := NewSift("escalation_gate", "Does this require escalation?", processor)
 
 	thought := newTestThought("test sift gate opens")
@@ -115,7 +127,7 @@ func TestSiftGateClosed(t *testing.T) {
 	SetProvider(provider)
 	defer SetProvider(nil)
 
-	processor := &mockProcessor{name: "test-processor"}
+	processor := newMockProcessor("test-processor")
 	sift := NewSift("escalation_gate", "Does this require escalation?", processor)
 
 	thought := newTestThought("test sift gate closed")
@@ -153,7 +165,7 @@ func TestSiftWithIntrospection(t *testing.T) {
 	SetProvider(provider)
 	defer SetProvider(nil)
 
-	processor := &mockProcessor{name: "test-processor"}
+	processor := newMockProcessor("test-processor")
 	sift := NewSift("escalation_gate", "Does this require escalation?", processor).
 		WithIntrospection()
 
@@ -186,7 +198,7 @@ func TestSiftNoIntrospectionByDefault(t *testing.T) {
 	SetProvider(provider)
 	defer SetProvider(nil)
 
-	processor := &mockProcessor{name: "test-processor"}
+	processor := newMockProcessor("test-processor")
 	sift := NewSift("escalation_gate", "Does this require escalation?", processor)
 
 	thought := newTestThought("test sift no introspection")
@@ -214,7 +226,7 @@ func TestSiftWithCustomSummaryKey(t *testing.T) {
 	SetProvider(provider)
 	defer SetProvider(nil)
 
-	processor := &mockProcessor{name: "test-processor"}
+	processor := newMockProcessor("test-processor")
 	sift := NewSift("escalation_gate", "Does this require escalation?", processor).
 		WithIntrospection().
 		WithSummaryKey("custom_gate_context")
@@ -245,7 +257,7 @@ func TestSiftBuilderMethods(t *testing.T) {
 	SetProvider(provider)
 	defer SetProvider(nil)
 
-	processor := &mockProcessor{name: "test-processor"}
+	processor := newMockProcessor("test-processor")
 	sift := NewSift("escalation_gate", "Does this require escalation?", processor).
 		WithIntrospection().
 		WithSummaryKey("context").
@@ -278,8 +290,8 @@ func TestSiftSetProcessor(t *testing.T) {
 	SetProvider(provider)
 	defer SetProvider(nil)
 
-	originalProcessor := &mockProcessor{name: "original-processor"}
-	newProcessor := &mockProcessor{name: "new-processor"}
+	originalProcessor := newMockProcessor("original-processor")
+	newProcessor := newMockProcessor("new-processor")
 
 	sift := NewSift("escalation_gate", "Does this require escalation?", originalProcessor)
 	sift.SetProcessor(newProcessor)
@@ -303,16 +315,16 @@ func TestSiftSetProcessor(t *testing.T) {
 }
 
 func TestSiftName(t *testing.T) {
-	processor := &mockProcessor{name: "test-processor"}
+	processor := newMockProcessor("test-processor")
 	sift := NewSift("my_gate", "Some question?", processor)
 
-	if sift.Name() != "my_gate" {
-		t.Errorf("expected name 'my_gate', got %q", sift.Name())
+	if sift.Identity().Name() != "my_gate" {
+		t.Errorf("expected name 'my_gate', got %q", sift.Identity().Name())
 	}
 }
 
 func TestSiftClose(t *testing.T) {
-	processor := &mockProcessor{name: "test-processor"}
+	processor := newMockProcessor("test-processor")
 	sift := NewSift("my_gate", "Some question?", processor)
 
 	// Close should propagate to processor (which returns nil)

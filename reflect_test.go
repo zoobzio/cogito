@@ -7,8 +7,8 @@ import (
 
 func TestReflect_Name(t *testing.T) {
 	reflect := NewReflect("my_reflect")
-	if reflect.Name() != "my_reflect" {
-		t.Errorf("expected name 'my_reflect', got %q", reflect.Name())
+	if reflect.Identity().Name() != "my_reflect" {
+		t.Errorf("expected name 'my_reflect', got %q", reflect.Identity().Name())
 	}
 }
 

@@ -246,7 +246,7 @@ func TestForget_CopiesMetadata(t *testing.T) {
 
 func TestForget_Name(t *testing.T) {
 	forget := NewForget("my_forget")
-	if forget.Name() != "my_forget" {
-		t.Errorf("expected name 'my_forget', got %q", forget.Name())
+	if forget.Identity().Name() != "my_forget" {
+		t.Errorf("expected name 'my_forget', got %q", forget.Identity().Name())
 	}
 }

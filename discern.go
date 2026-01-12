@@ -16,6 +16,7 @@ import (
 // Discern is an LLM-powered semantic routing connector that implements pipz.Chainable[*Thought].
 // It uses zyn.Classification directly to determine which route to take based on semantic analysis.
 type Discern struct {
+	identity   pipz.Identity
 	key        string
 	question   string
 	categories []string
@@ -54,6 +55,7 @@ type Discern struct {
 //	router.SetFallback(generalPipeline)
 func NewDiscern(key, question string, categories []string) *Discern {
 	return &Discern{
+		identity:         pipz.NewIdentity(key, "Semantic routing connector"),
 		key:              key,
 		question:         question,
 		categories:       categories,
@@ -167,44 +169,13 @@ func (d *Discern) Process(ctx context.Context, t *Thought) (*Thought, error) {
 
 // runIntrospection executes the transform synapse for semantic summary.
 func (d *Discern) runIntrospection(ctx context.Context, t *Thought, resp zyn.ClassificationResponse, originalNotes []Note, provider Provider) error {
-	transformSynapse, err := zyn.Transform(
-		"Synthesize routing decision into context for next reasoning step",
-		provider,
-	)
-	if err != nil {
-		return fmt.Errorf("discern: failed to create transform synapse: %w", err)
-	}
-
-	introspectionInput := d.buildIntrospectionInput(resp, originalNotes)
-
-	// Determine introspection temperature
-	introspectionTemp := DefaultIntrospectionTemperature
-	if d.introspectionTemperature != 0 {
-		introspectionTemp = d.introspectionTemperature
-	}
-	introspectionInput.Temperature = introspectionTemp
-
-	summary, err := transformSynapse.FireWithInput(ctx, t.Session, introspectionInput)
-	if err != nil {
-		return fmt.Errorf("discern: transform synapse execution failed: %w", err)
-	}
-
-	// Determine summary key
-	summaryKey := d.summaryKey
-	if summaryKey == "" {
-		summaryKey = d.key + "_summary"
-	}
-	if err := t.SetContent(ctx, summaryKey, summary, "discern-introspection"); err != nil {
-		return fmt.Errorf("discern: failed to persist introspection note: %w", err)
-	}
-
-	capitan.Emit(ctx, IntrospectionCompleted,
-		FieldTraceID.Field(t.TraceID),
-		FieldStepType.Field("discern"),
-		FieldContextSize.Field(len(summary)),
-	)
-
-	return nil
+	return runIntrospection(ctx, t, provider, d.buildIntrospectionInput(resp, originalNotes), introspectionConfig{
+		stepType:                 "discern",
+		key:                      d.key,
+		summaryKey:               d.summaryKey,
+		introspectionTemperature: d.introspectionTemperature,
+		synapsePrompt:            "Synthesize routing decision into context for next reasoning step",
+	})
 }
 
 // buildIntrospectionInput formats classification for the transform synapse.
@@ -242,9 +213,14 @@ func (d *Discern) emitFailed(ctx context.Context, t *Thought, start time.Time, e
 	)
 }
 
-// Name implements pipz.Chainable[*Thought].
-func (d *Discern) Name() pipz.Name {
-	return pipz.Name(d.key)
+// Identity implements pipz.Chainable[*Thought].
+func (d *Discern) Identity() pipz.Identity {
+	return d.identity
+}
+
+// Schema implements pipz.Chainable[*Thought].
+func (d *Discern) Schema() pipz.Node {
+	return pipz.Node{Identity: d.identity, Type: "discern"}
 }
 
 // Close implements pipz.Chainable[*Thought].

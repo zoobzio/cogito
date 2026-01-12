@@ -214,8 +214,8 @@ func TestCompressWithSummaryKey(t *testing.T) {
 func TestCompressChainable(t *testing.T) {
 	compress := NewCompress("test_compress")
 
-	if compress.Name() != "test_compress" {
-		t.Errorf("expected name 'test_compress', got %q", compress.Name())
+	if compress.Identity().Name() != "test_compress" {
+		t.Errorf("expected name 'test_compress', got %q", compress.Identity().Name())
 	}
 
 	if err := compress.Close(); err != nil {

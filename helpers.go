@@ -16,7 +16,7 @@ import (
 //
 // Example:
 //
-//	route := cogito.Do("route-ticket", func(ctx context.Context, t *cogito.Thought) (*cogito.Thought, error) {
+//	route := cogito.Do(pipz.NewIdentity("route-ticket", "Route tickets to queues"), func(ctx context.Context, t *cogito.Thought) (*cogito.Thought, error) {
 //	    ticketType, _ := t.GetContent("ticket_type")
 //	    if ticketType == "urgent" {
 //	        t.SetContent("queue", "urgent-queue", "route-ticket")
@@ -25,8 +25,8 @@ import (
 //	    }
 //	    return t, nil
 //	})
-func Do(name string, fn func(context.Context, *Thought) (*Thought, error)) pipz.Processor[*Thought] {
-	return pipz.Apply(pipz.Name(name), fn)
+func Do(identity pipz.Identity, fn func(context.Context, *Thought) (*Thought, error)) pipz.Processor[*Thought] {
+	return pipz.Apply(identity, fn)
 }
 
 // Transform creates a processor from a pure transformation function.
@@ -34,12 +34,12 @@ func Do(name string, fn func(context.Context, *Thought) (*Thought, error)) pipz.
 //
 // Example:
 //
-//	addMetadata := cogito.Transform("add-metadata", func(ctx context.Context, t *cogito.Thought) *cogito.Thought {
+//	addMetadata := cogito.Transform(pipz.NewIdentity("add-metadata", "Add timestamp"), func(ctx context.Context, t *cogito.Thought) *cogito.Thought {
 //	    t.SetContent("timestamp", time.Now().Format(time.RFC3339), "add-metadata")
 //	    return t
 //	})
-func Transform(name string, fn func(context.Context, *Thought) *Thought) pipz.Processor[*Thought] {
-	return pipz.Transform(pipz.Name(name), fn)
+func Transform(identity pipz.Identity, fn func(context.Context, *Thought) *Thought) pipz.Processor[*Thought] {
+	return pipz.Transform(identity, fn)
 }
 
 // Effect creates a processor that performs a side effect without modifying the thought.
@@ -47,12 +47,12 @@ func Transform(name string, fn func(context.Context, *Thought) *Thought) pipz.Pr
 //
 // Example:
 //
-//	logger := cogito.Effect("log-intent", func(ctx context.Context, t *cogito.Thought) error {
+//	logger := cogito.Effect(pipz.NewIdentity("log-intent", "Log processing intent"), func(ctx context.Context, t *cogito.Thought) error {
 //	    log.Printf("Processing thought with intent: %s", t.Intent)
 //	    return nil
 //	})
-func Effect(name string, fn func(context.Context, *Thought) error) pipz.Processor[*Thought] {
-	return pipz.Effect(pipz.Name(name), fn)
+func Effect(identity pipz.Identity, fn func(context.Context, *Thought) error) pipz.Processor[*Thought] {
+	return pipz.Effect(identity, fn)
 }
 
 // Mutate creates a processor that conditionally modifies a thought.
@@ -60,7 +60,7 @@ func Effect(name string, fn func(context.Context, *Thought) error) pipz.Processo
 //
 // Example:
 //
-//	prioritize := cogito.Mutate("prioritize",
+//	prioritize := cogito.Mutate(pipz.NewIdentity("prioritize", "Set high priority for critical items"),
 //	    func(ctx context.Context, t *cogito.Thought) *cogito.Thought {
 //	        t.SetContent("priority", "high", "prioritize")
 //	        return t
@@ -70,8 +70,8 @@ func Effect(name string, fn func(context.Context, *Thought) error) pipz.Processo
 //	        return urgency == "critical"
 //	    },
 //	)
-func Mutate(name string, fn func(context.Context, *Thought) *Thought, predicate func(context.Context, *Thought) bool) pipz.Processor[*Thought] {
-	return pipz.Mutate(pipz.Name(name), fn, predicate)
+func Mutate(identity pipz.Identity, fn func(context.Context, *Thought) *Thought, predicate func(context.Context, *Thought) bool) pipz.Processor[*Thought] {
+	return pipz.Mutate(identity, fn, predicate)
 }
 
 // Enrich creates a processor that optionally enhances a thought.
@@ -79,7 +79,7 @@ func Mutate(name string, fn func(context.Context, *Thought) *Thought, predicate 
 //
 // Example:
 //
-//	addContext := cogito.Enrich("add-context", func(ctx context.Context, t *cogito.Thought) (*cogito.Thought, error) {
+//	addContext := cogito.Enrich(pipz.NewIdentity("add-context", "Fetch external context"), func(ctx context.Context, t *cogito.Thought) (*cogito.Thought, error) {
 //	    extra, err := fetchExternalContext(ctx, t.Intent)
 //	    if err != nil {
 //	        return t, err // Logged but pipeline continues
@@ -87,8 +87,8 @@ func Mutate(name string, fn func(context.Context, *Thought) *Thought, predicate 
 //	    t.SetContent("external_context", extra, "add-context")
 //	    return t, nil
 //	})
-func Enrich(name string, fn func(context.Context, *Thought) (*Thought, error)) pipz.Processor[*Thought] {
-	return pipz.Enrich(pipz.Name(name), fn)
+func Enrich(identity pipz.Identity, fn func(context.Context, *Thought) (*Thought, error)) pipz.Processor[*Thought] {
+	return pipz.Enrich(identity, fn)
 }
 
 // -----------------------------------------------------------------------------
@@ -100,12 +100,12 @@ func Enrich(name string, fn func(context.Context, *Thought) (*Thought, error)) p
 //
 // Example:
 //
-//	pipeline := cogito.Sequence("reasoning-chain",
+//	pipeline := cogito.Sequence(pipz.NewIdentity("reasoning-chain", "Main reasoning pipeline"),
 //	    cogito.NewAnalyze("analyze", "Examine the situation"),
-//	    cogito.NewDecide("decide", "What action to take?", []string{"proceed", "wait", "abort"}),
+//	    cogito.NewDecide("decide", "What action to take?"),
 //	)
-func Sequence(name string, processors ...pipz.Chainable[*Thought]) *pipz.Sequence[*Thought] {
-	return pipz.NewSequence(pipz.Name(name), processors...)
+func Sequence(identity pipz.Identity, processors ...pipz.Chainable[*Thought]) *pipz.Sequence[*Thought] {
+	return pipz.NewSequence(identity, processors...)
 }
 
 // -----------------------------------------------------------------------------
@@ -118,31 +118,30 @@ func Sequence(name string, processors ...pipz.Chainable[*Thought]) *pipz.Sequenc
 //
 // Example:
 //
-//	onlyUrgent := cogito.Filter("urgent-only",
+//	onlyUrgent := cogito.Filter(pipz.NewIdentity("urgent-only", "Process only urgent items"),
 //	    func(ctx context.Context, t *cogito.Thought) bool {
 //	        priority, _ := t.GetContent("priority")
 //	        return priority == "urgent"
 //	    },
 //	    urgentProcessor,
 //	)
-func Filter(name string, predicate func(context.Context, *Thought) bool, processor pipz.Chainable[*Thought]) *pipz.Filter[*Thought] {
-	return pipz.NewFilter(pipz.Name(name), predicate, processor)
+func Filter(identity pipz.Identity, predicate func(context.Context, *Thought) bool, processor pipz.Chainable[*Thought]) *pipz.Filter[*Thought] {
+	return pipz.NewFilter(identity, predicate, processor)
 }
 
 // Switch creates a router that directs thoughts to different processors.
-// The condition function returns a route key that determines which processor handles the thought.
+// The condition function returns a route key string that determines which processor handles the thought.
 //
 // Example:
 //
-//	router := cogito.Switch("intent-router", func(ctx context.Context, t *cogito.Thought) string {
+//	router := cogito.Switch(pipz.NewIdentity("intent-router", "Route by category"), func(ctx context.Context, t *cogito.Thought) string {
 //	    category, _ := t.GetContent("category")
 //	    return category
 //	})
 //	router.AddRoute("question", questionHandler)
 //	router.AddRoute("command", commandHandler)
-//	router.AddRoute("statement", statementHandler)
-func Switch[K comparable](name string, condition func(context.Context, *Thought) K) *pipz.Switch[*Thought, K] {
-	return pipz.NewSwitch(pipz.Name(name), condition)
+func Switch(identity pipz.Identity, condition func(context.Context, *Thought) string) *pipz.Switch[*Thought] {
+	return pipz.NewSwitch(identity, condition)
 }
 
 // Gate creates a simple pass/fail filter that blocks thoughts not meeting criteria.
@@ -150,12 +149,12 @@ func Switch[K comparable](name string, condition func(context.Context, *Thought)
 //
 // Example:
 //
-//	validOnly := cogito.Gate("valid-only", func(ctx context.Context, t *cogito.Thought) bool {
+//	validOnly := cogito.Gate(pipz.NewIdentity("valid-only", "Filter invalid thoughts"), func(ctx context.Context, t *cogito.Thought) bool {
 //	    _, err := t.GetContent("required_field")
 //	    return err == nil
 //	})
-func Gate(name string, predicate func(context.Context, *Thought) bool) pipz.Processor[*Thought] {
-	return pipz.Apply(pipz.Name(name), func(ctx context.Context, t *Thought) (*Thought, error) {
+func Gate(identity pipz.Identity, predicate func(context.Context, *Thought) bool) pipz.Processor[*Thought] {
+	return pipz.Apply(identity, func(ctx context.Context, t *Thought) (*Thought, error) {
 		if predicate(ctx, t) {
 			return t, nil
 		}
@@ -172,13 +171,13 @@ func Gate(name string, predicate func(context.Context, *Thought) bool) pipz.Proc
 //
 // Example:
 //
-//	resilient := cogito.Fallback("resilient-analysis",
+//	resilient := cogito.Fallback(pipz.NewIdentity("resilient-analysis", "Try multiple analyzers"),
 //	    primaryAnalyzer,
 //	    backupAnalyzer,
 //	    fallbackAnalyzer,
 //	)
-func Fallback(name string, processors ...pipz.Chainable[*Thought]) *pipz.Fallback[*Thought] {
-	return pipz.NewFallback(pipz.Name(name), processors...)
+func Fallback(identity pipz.Identity, processors ...pipz.Chainable[*Thought]) *pipz.Fallback[*Thought] {
+	return pipz.NewFallback(identity, processors...)
 }
 
 // Retry creates a processor that retries on failure up to maxAttempts times.
@@ -186,9 +185,9 @@ func Fallback(name string, processors ...pipz.Chainable[*Thought]) *pipz.Fallbac
 //
 // Example:
 //
-//	reliable := cogito.Retry("reliable-call", externalServiceCall, 3)
-func Retry(name string, processor pipz.Chainable[*Thought], maxAttempts int) *pipz.Retry[*Thought] {
-	return pipz.NewRetry(pipz.Name(name), processor, maxAttempts)
+//	reliable := cogito.Retry(pipz.NewIdentity("reliable-call", "Retry external service"), externalServiceCall, 3)
+func Retry(identity pipz.Identity, processor pipz.Chainable[*Thought], maxAttempts int) *pipz.Retry[*Thought] {
+	return pipz.NewRetry(identity, processor, maxAttempts)
 }
 
 // Backoff creates a processor that retries with exponential backoff.
@@ -196,9 +195,9 @@ func Retry(name string, processor pipz.Chainable[*Thought], maxAttempts int) *pi
 //
 // Example:
 //
-//	resilient := cogito.Backoff("api-call", apiProcessor, 5, time.Second)
-func Backoff(name string, processor pipz.Chainable[*Thought], maxAttempts int, baseDelay time.Duration) *pipz.Backoff[*Thought] {
-	return pipz.NewBackoff(pipz.Name(name), processor, maxAttempts, baseDelay)
+//	resilient := cogito.Backoff(pipz.NewIdentity("api-call", "API with backoff"), apiProcessor, 5, time.Second)
+func Backoff(identity pipz.Identity, processor pipz.Chainable[*Thought], maxAttempts int, baseDelay time.Duration) *pipz.Backoff[*Thought] {
+	return pipz.NewBackoff(identity, processor, maxAttempts, baseDelay)
 }
 
 // Timeout creates a processor that enforces a time limit on execution.
@@ -206,9 +205,9 @@ func Backoff(name string, processor pipz.Chainable[*Thought], maxAttempts int, b
 //
 // Example:
 //
-//	bounded := cogito.Timeout("bounded-analysis", analyzer, 30*time.Second)
-func Timeout(name string, processor pipz.Chainable[*Thought], duration time.Duration) *pipz.Timeout[*Thought] {
-	return pipz.NewTimeout(pipz.Name(name), processor, duration)
+//	bounded := cogito.Timeout(pipz.NewIdentity("bounded-analysis", "Time-limited analysis"), analyzer, 30*time.Second)
+func Timeout(identity pipz.Identity, processor pipz.Chainable[*Thought], duration time.Duration) *pipz.Timeout[*Thought] {
+	return pipz.NewTimeout(identity, processor, duration)
 }
 
 // Handle creates a processor that handles errors without stopping the pipeline.
@@ -217,13 +216,13 @@ func Timeout(name string, processor pipz.Chainable[*Thought], duration time.Dura
 //
 // Example:
 //
-//	errorLogger := pipz.Effect(pipz.Name("log-error"), func(ctx context.Context, err *pipz.Error[*cogito.Thought]) error {
+//	errorLogger := pipz.Effect(pipz.NewIdentity("log-error", "Log errors"), func(ctx context.Context, err *pipz.Error[*cogito.Thought]) error {
 //	    log.Printf("thought %s failed: %v", err.InputData.TraceID, err.Err)
 //	    return nil
 //	})
-//	observed := cogito.Handle("observed", riskyProcessor, errorLogger)
-func Handle(name string, processor pipz.Chainable[*Thought], errorHandler pipz.Chainable[*pipz.Error[*Thought]]) *pipz.Handle[*Thought] {
-	return pipz.NewHandle(pipz.Name(name), processor, errorHandler)
+//	observed := cogito.Handle(pipz.NewIdentity("observed", "Observed processor"), riskyProcessor, errorLogger)
+func Handle(identity pipz.Identity, processor pipz.Chainable[*Thought], errorHandler pipz.Chainable[*pipz.Error[*Thought]]) *pipz.Handle[*Thought] {
+	return pipz.NewHandle(identity, processor, errorHandler)
 }
 
 // -----------------------------------------------------------------------------
@@ -235,10 +234,9 @@ func Handle(name string, processor pipz.Chainable[*Thought], errorHandler pipz.C
 //
 // Example:
 //
-//	limited := cogito.RateLimiter("api-limit", 100, 10) // 100/sec, burst 10
-//	limited.SetProcessor(apiCall)
-func RateLimiter(name string, requestsPerSecond float64, burst int) *pipz.RateLimiter[*Thought] {
-	return pipz.NewRateLimiter[*Thought](pipz.Name(name), requestsPerSecond, burst)
+//	limited := cogito.RateLimiter(pipz.NewIdentity("api-limit", "API rate limiter"), 100, 10, apiCall) // 100/sec, burst 10
+func RateLimiter(identity pipz.Identity, requestsPerSecond float64, burst int, processor pipz.Chainable[*Thought]) *pipz.RateLimiter[*Thought] {
+	return pipz.NewRateLimiter(identity, requestsPerSecond, burst, processor)
 }
 
 // CircuitBreaker creates a processor that prevents cascade failures.
@@ -246,9 +244,9 @@ func RateLimiter(name string, requestsPerSecond float64, burst int) *pipz.RateLi
 //
 // Example:
 //
-//	protected := cogito.CircuitBreaker("service-call", apiProcessor, 5, 30*time.Second)
-func CircuitBreaker(name string, processor pipz.Chainable[*Thought], failureThreshold int, resetTimeout time.Duration) *pipz.CircuitBreaker[*Thought] {
-	return pipz.NewCircuitBreaker(pipz.Name(name), processor, failureThreshold, resetTimeout)
+//	protected := cogito.CircuitBreaker(pipz.NewIdentity("service-call", "Protected service call"), apiProcessor, 5, 30*time.Second)
+func CircuitBreaker(identity pipz.Identity, processor pipz.Chainable[*Thought], failureThreshold int, resetTimeout time.Duration) *pipz.CircuitBreaker[*Thought] {
+	return pipz.NewCircuitBreaker(identity, processor, failureThreshold, resetTimeout)
 }
 
 // -----------------------------------------------------------------------------
@@ -261,13 +259,13 @@ func CircuitBreaker(name string, processor pipz.Chainable[*Thought], failureThre
 //
 // Example:
 //
-//	parallel := cogito.Concurrent("notify-all", nil, // no reducer
+//	parallel := cogito.Concurrent(pipz.NewIdentity("notify-all", "Parallel notifications"), nil,
 //	    emailNotifier,
 //	    smsNotifier,
 //	    webhookNotifier,
 //	)
-func Concurrent(name string, reducer func(original *Thought, results map[pipz.Name]*Thought, errors map[pipz.Name]error) *Thought, processors ...pipz.Chainable[*Thought]) *pipz.Concurrent[*Thought] {
-	return pipz.NewConcurrent(pipz.Name(name), reducer, processors...)
+func Concurrent(identity pipz.Identity, reducer func(original *Thought, results map[pipz.Identity]*Thought, errors map[pipz.Identity]error) *Thought, processors ...pipz.Chainable[*Thought]) *pipz.Concurrent[*Thought] {
+	return pipz.NewConcurrent(identity, reducer, processors...)
 }
 
 // Race runs all processors in parallel and returns the first successful result.
@@ -275,13 +273,13 @@ func Concurrent(name string, reducer func(original *Thought, results map[pipz.Na
 //
 // Example:
 //
-//	fastest := cogito.Race("fastest-lookup",
+//	fastest := cogito.Race(pipz.NewIdentity("fastest-lookup", "First successful lookup"),
 //	    cacheProcessor,
 //	    databaseProcessor,
 //	    externalAPIProcessor,
 //	)
-func Race(name string, processors ...pipz.Chainable[*Thought]) *pipz.Race[*Thought] {
-	return pipz.NewRace(pipz.Name(name), processors...)
+func Race(identity pipz.Identity, processors ...pipz.Chainable[*Thought]) *pipz.Race[*Thought] {
+	return pipz.NewRace(identity, processors...)
 }
 
 // WorkerPool creates a bounded parallel executor with a fixed number of workers.
@@ -289,11 +287,11 @@ func Race(name string, processors ...pipz.Chainable[*Thought]) *pipz.Race[*Thoug
 //
 // Example:
 //
-//	pool := cogito.WorkerPool("bounded-analysis", 5,
+//	pool := cogito.WorkerPool(pipz.NewIdentity("bounded-analysis", "Bounded worker pool"), 5,
 //	    analyzer1,
 //	    analyzer2,
 //	    analyzer3,
 //	)
-func WorkerPool(name string, workers int, processors ...pipz.Chainable[*Thought]) *pipz.WorkerPool[*Thought] {
-	return pipz.NewWorkerPool(pipz.Name(name), workers, processors...)
+func WorkerPool(identity pipz.Identity, workers int, processors ...pipz.Chainable[*Thought]) *pipz.WorkerPool[*Thought] {
+	return pipz.NewWorkerPool(identity, workers, processors...)
 }

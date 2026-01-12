@@ -14,6 +14,7 @@ import (
 // Assess is a sentiment assessment primitive that implements pipz.Chainable[*Thought].
 // It assesses the emotional tone of input and stores the full response for typed retrieval.
 type Assess struct {
+	identity                 pipz.Identity
 	key                      string
 	summaryKey               string
 	useIntrospection         bool
@@ -41,6 +42,7 @@ type Assess struct {
 //	fmt.Println(resp.Overall, resp.Confidence, resp.Scores)
 func NewAssess(key string) *Assess {
 	return &Assess{
+		identity:         pipz.NewIdentity(key, "Sentiment assessment primitive"),
 		key:              key,
 		useIntrospection: DefaultIntrospection,
 		temperature:      DefaultReasoningTemperature,
@@ -65,7 +67,7 @@ func (s *Assess) Process(ctx context.Context, t *Thought) (*Thought, error) {
 
 	// Get unpublished notes
 	unpublished := t.GetUnpublishedNotes()
-	context := RenderNotesToContext(unpublished)
+	noteContext := RenderNotesToContext(unpublished)
 
 	// Emit step started
 	capitan.Emit(ctx, StepStarted,
@@ -84,7 +86,7 @@ func (s *Assess) Process(ctx context.Context, t *Thought) (*Thought, error) {
 
 	// PHASE 1: REASONING - Sentiment analysis
 	sentResponse, err := sentimentSynapse.FireWithInput(ctx, t.Session, zyn.SentimentInput{
-		Text:        context,
+		Text:        noteContext,
 		Temperature: reasoningTemp,
 	})
 	if err != nil {
@@ -129,44 +131,13 @@ func (s *Assess) Process(ctx context.Context, t *Thought) (*Thought, error) {
 
 // runIntrospection executes the transform synapse for semantic summary.
 func (s *Assess) runIntrospection(ctx context.Context, t *Thought, resp zyn.SentimentResponse, originalNotes []Note, provider Provider) error {
-	transformSynapse, err := zyn.Transform(
-		"Synthesize sentiment analysis into context for next reasoning step",
-		provider,
-	)
-	if err != nil {
-		return fmt.Errorf("assess: failed to create transform synapse: %w", err)
-	}
-
-	introspectionInput := s.buildIntrospectionInput(resp, originalNotes)
-
-	// Determine introspection temperature
-	introspectionTemp := DefaultIntrospectionTemperature
-	if s.introspectionTemperature != 0 {
-		introspectionTemp = s.introspectionTemperature
-	}
-	introspectionInput.Temperature = introspectionTemp
-
-	summary, err := transformSynapse.FireWithInput(ctx, t.Session, introspectionInput)
-	if err != nil {
-		return fmt.Errorf("assess: transform synapse execution failed: %w", err)
-	}
-
-	// Determine summary key
-	summaryKey := s.summaryKey
-	if summaryKey == "" {
-		summaryKey = s.key + "_summary"
-	}
-	if err := t.SetContent(ctx, summaryKey, summary, "assess-introspection"); err != nil {
-		return fmt.Errorf("assess: failed to persist introspection note: %w", err)
-	}
-
-	capitan.Emit(ctx, IntrospectionCompleted,
-		FieldTraceID.Field(t.TraceID),
-		FieldStepType.Field("assess"),
-		FieldContextSize.Field(len(summary)),
-	)
-
-	return nil
+	return runIntrospection(ctx, t, provider, s.buildIntrospectionInput(resp, originalNotes), introspectionConfig{
+		stepType:                 "assess",
+		key:                      s.key,
+		summaryKey:               s.summaryKey,
+		introspectionTemperature: s.introspectionTemperature,
+		synapsePrompt:            "Synthesize sentiment analysis into context for next reasoning step",
+	})
 }
 
 // buildIntrospectionInput formats sentiment for the transform synapse.
@@ -217,9 +188,14 @@ func (s *Assess) emitFailed(ctx context.Context, t *Thought, start time.Time, er
 	)
 }
 
-// Name implements pipz.Chainable[*Thought].
-func (s *Assess) Name() pipz.Name {
-	return pipz.Name(s.key)
+// Identity implements pipz.Chainable[*Thought].
+func (s *Assess) Identity() pipz.Identity {
+	return s.identity
+}
+
+// Schema implements pipz.Chainable[*Thought].
+func (s *Assess) Schema() pipz.Node {
+	return pipz.Node{Identity: s.identity, Type: "assess"}
 }
 
 // Close implements pipz.Chainable[*Thought].

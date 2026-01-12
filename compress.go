@@ -15,6 +15,7 @@ import (
 // It summarizes the current session via LLM and replaces it with a fresh session
 // containing the summary as context.
 type Compress struct {
+	identity    pipz.Identity
 	key         string
 	threshold   int    // Minimum message count to trigger compression (0 = always)
 	summaryKey  string // Note key to store the summary
@@ -37,6 +38,7 @@ type Compress struct {
 //	result, _ := compress.Process(ctx, thought)
 func NewCompress(key string) *Compress {
 	return &Compress{
+		identity:    pipz.NewIdentity(key, "Session compression primitive"),
 		key:         key,
 		threshold:   0,
 		temperature: DefaultReasoningTemperature,
@@ -148,9 +150,14 @@ func (c *Compress) emitFailed(ctx context.Context, t *Thought, start time.Time, 
 	)
 }
 
-// Name implements pipz.Chainable[*Thought].
-func (c *Compress) Name() pipz.Name {
-	return pipz.Name(c.key)
+// Identity implements pipz.Chainable[*Thought].
+func (c *Compress) Identity() pipz.Identity {
+	return c.identity
+}
+
+// Schema implements pipz.Chainable[*Thought].
+func (c *Compress) Schema() pipz.Node {
+	return pipz.Node{Identity: c.identity, Type: "compress"}
 }
 
 // Close implements pipz.Chainable[*Thought].

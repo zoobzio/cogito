@@ -75,9 +75,18 @@ func (m *mockDiscernProvider) Name() string {
 
 // mockRouteProcessor is a simple processor that marks which route was taken.
 type mockRouteProcessor struct {
-	name   string
-	called bool
-	marker string
+	identity pipz.Identity
+	name     string
+	called   bool
+	marker   string
+}
+
+func newMockRouteProcessor(name, marker string) *mockRouteProcessor {
+	return &mockRouteProcessor{
+		identity: pipz.NewIdentity(name, "Mock route processor"),
+		name:     name,
+		marker:   marker,
+	}
 }
 
 func (m *mockRouteProcessor) Process(ctx context.Context, t *Thought) (*Thought, error) {
@@ -86,8 +95,12 @@ func (m *mockRouteProcessor) Process(ctx context.Context, t *Thought) (*Thought,
 	return t, nil
 }
 
-func (m *mockRouteProcessor) Name() pipz.Name {
-	return pipz.Name(m.name)
+func (m *mockRouteProcessor) Identity() pipz.Identity {
+	return m.identity
+}
+
+func (m *mockRouteProcessor) Schema() pipz.Node {
+	return pipz.Node{Identity: m.identity, Type: "mock-route-processor"}
 }
 
 func (m *mockRouteProcessor) Close() error {
@@ -99,8 +112,8 @@ func TestDiscernBasicRouting(t *testing.T) {
 	SetProvider(provider)
 	defer SetProvider(nil)
 
-	billingRoute := &mockRouteProcessor{name: "billing-handler", marker: "billing_processed"}
-	technicalRoute := &mockRouteProcessor{name: "technical-handler", marker: "technical_processed"}
+	billingRoute := newMockRouteProcessor("billing-handler", "billing_processed")
+	technicalRoute := newMockRouteProcessor("technical-handler", "technical_processed")
 
 	router := NewDiscern(
 		"ticket_route",
@@ -138,7 +151,7 @@ func TestDiscernFallback(t *testing.T) {
 	SetProvider(provider)
 	defer SetProvider(nil)
 
-	fallbackRoute := &mockRouteProcessor{name: "fallback-handler", marker: "fallback_processed"}
+	fallbackRoute := newMockRouteProcessor("fallback-handler", "fallback_processed")
 
 	router := NewDiscern(
 		"ticket_route",
@@ -337,8 +350,8 @@ func TestDiscernRouteManagement(t *testing.T) {
 		[]string{"a", "b", "c"},
 	)
 
-	routeA := &mockRouteProcessor{name: "a-handler", marker: "a_processed"}
-	routeB := &mockRouteProcessor{name: "b-handler", marker: "b_processed"}
+	routeA := newMockRouteProcessor("a-handler", "a_processed")
+	routeB := newMockRouteProcessor("b-handler", "b_processed")
 
 	// Add routes
 	router.AddRoute("a", routeA)
@@ -380,9 +393,9 @@ func TestDiscernChainable(t *testing.T) {
 		[]string{"billing", "technical"},
 	)
 
-	// Verify Name() returns expected value
-	if router.Name() != "ticket_route" {
-		t.Errorf("expected name 'ticket_route', got %q", router.Name())
+	// Verify Identity().Identity().Name() returns expected value
+	if router.Identity().Name() != "ticket_route" {
+		t.Errorf("expected name 'ticket_route', got %q", router.Identity().Name())
 	}
 
 	// Verify Close() doesn't error
@@ -393,16 +406,29 @@ func TestDiscernChainable(t *testing.T) {
 
 // mockFailingProcessor returns an error when processed.
 type mockFailingProcessor struct {
-	name string
-	err  error
+	identity pipz.Identity
+	name     string
+	err      error
+}
+
+func newMockFailingProcessor(name string, err error) *mockFailingProcessor {
+	return &mockFailingProcessor{
+		identity: pipz.NewIdentity(name, "Mock failing processor"),
+		name:     name,
+		err:      err,
+	}
 }
 
 func (m *mockFailingProcessor) Process(ctx context.Context, t *Thought) (*Thought, error) {
 	return t, m.err
 }
 
-func (m *mockFailingProcessor) Name() pipz.Name {
-	return pipz.Name(m.name)
+func (m *mockFailingProcessor) Identity() pipz.Identity {
+	return m.identity
+}
+
+func (m *mockFailingProcessor) Schema() pipz.Node {
+	return pipz.Node{Identity: m.identity, Type: "mock-failing-processor"}
 }
 
 func (m *mockFailingProcessor) Close() error {
@@ -415,7 +441,7 @@ func TestDiscernRouteProcessorError(t *testing.T) {
 	defer SetProvider(nil)
 
 	routeErr := fmt.Errorf("billing system unavailable")
-	failingRoute := &mockFailingProcessor{name: "billing-handler", err: routeErr}
+	failingRoute := newMockFailingProcessor("billing-handler", routeErr)
 
 	router := NewDiscern(
 		"ticket_route",
@@ -447,7 +473,7 @@ func TestDiscernFallbackProcessorError(t *testing.T) {
 	defer SetProvider(nil)
 
 	fallbackErr := fmt.Errorf("fallback handler failed")
-	failingFallback := &mockFailingProcessor{name: "fallback-handler", err: fallbackErr}
+	failingFallback := newMockFailingProcessor("fallback-handler", fallbackErr)
 
 	router := NewDiscern(
 		"ticket_route",
@@ -475,17 +501,30 @@ func TestDiscernFallbackProcessorError(t *testing.T) {
 
 // mockClosingProcessor tracks Close() calls and can return an error.
 type mockClosingProcessor struct {
+	identity pipz.Identity
 	name     string
 	closed   bool
 	closeErr error
+}
+
+func newMockClosingProcessor(name string, closeErr error) *mockClosingProcessor {
+	return &mockClosingProcessor{
+		identity: pipz.NewIdentity(name, "Mock closing processor"),
+		name:     name,
+		closeErr: closeErr,
+	}
 }
 
 func (m *mockClosingProcessor) Process(ctx context.Context, t *Thought) (*Thought, error) {
 	return t, nil
 }
 
-func (m *mockClosingProcessor) Name() pipz.Name {
-	return pipz.Name(m.name)
+func (m *mockClosingProcessor) Identity() pipz.Identity {
+	return m.identity
+}
+
+func (m *mockClosingProcessor) Schema() pipz.Node {
+	return pipz.Node{Identity: m.identity, Type: "mock-closing-processor"}
 }
 
 func (m *mockClosingProcessor) Close() error {
@@ -494,9 +533,9 @@ func (m *mockClosingProcessor) Close() error {
 }
 
 func TestDiscernClosePropagates(t *testing.T) {
-	routeA := &mockClosingProcessor{name: "route-a"}
-	routeB := &mockClosingProcessor{name: "route-b"}
-	fallback := &mockClosingProcessor{name: "fallback"}
+	routeA := newMockClosingProcessor("route-a", nil)
+	routeB := newMockClosingProcessor("route-b", nil)
+	fallback := newMockClosingProcessor("fallback", nil)
 
 	router := NewDiscern(
 		"test_route",
@@ -524,9 +563,9 @@ func TestDiscernClosePropagates(t *testing.T) {
 }
 
 func TestDiscernCloseCollectsErrors(t *testing.T) {
-	routeA := &mockClosingProcessor{name: "route-a", closeErr: fmt.Errorf("route A close failed")}
-	routeB := &mockClosingProcessor{name: "route-b"}
-	fallback := &mockClosingProcessor{name: "fallback", closeErr: fmt.Errorf("fallback close failed")}
+	routeA := newMockClosingProcessor("route-a", fmt.Errorf("route A close failed"))
+	routeB := newMockClosingProcessor("route-b", nil)
+	fallback := newMockClosingProcessor("fallback", fmt.Errorf("fallback close failed"))
 
 	router := NewDiscern(
 		"test_route",

@@ -16,6 +16,7 @@ import (
 // and returns the most recent thought per task, providing broader context.
 // across multiple reasoning chains.
 type Survey struct {
+	identity    pipz.Identity
 	key         string
 	query       string
 	limit       int
@@ -38,6 +39,7 @@ type SurveyResult struct {
 // returning the most recent thought for each matching task.
 func NewSurvey(key, query string) *Survey {
 	return &Survey{
+		identity:    pipz.NewIdentity(key, "Task-grouped search primitive"),
 		key:         key,
 		query:       query,
 		limit:       5,
@@ -196,9 +198,14 @@ func (s *Survey) Scan() *SurveyResult {
 	return s.result
 }
 
-// Name implements pipz.Chainable[*Thought].
-func (s *Survey) Name() pipz.Name {
-	return pipz.Name(s.key)
+// Identity implements pipz.Chainable[*Thought].
+func (s *Survey) Identity() pipz.Identity {
+	return s.identity
+}
+
+// Schema implements pipz.Chainable[*Thought].
+func (s *Survey) Schema() pipz.Node {
+	return pipz.Node{Identity: s.identity, Type: "survey"}
 }
 
 // Close implements pipz.Chainable[*Thought].

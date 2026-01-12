@@ -163,7 +163,7 @@ func TestCheckpoint_PersistsToMemory(t *testing.T) {
 
 func TestCheckpoint_Name(t *testing.T) {
 	checkpoint := NewCheckpoint("my_checkpoint")
-	if checkpoint.Name() != "my_checkpoint" {
-		t.Errorf("expected name 'my_checkpoint', got %q", checkpoint.Name())
+	if checkpoint.Identity().Name() != "my_checkpoint" {
+		t.Errorf("expected name 'my_checkpoint', got %q", checkpoint.Identity().Name())
 	}
 }

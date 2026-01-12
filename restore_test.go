@@ -179,8 +179,8 @@ func TestRestore_PersistsToMemory(t *testing.T) {
 
 func TestRestore_Name(t *testing.T) {
 	restore := NewRestore("my_restore", "some-id")
-	if restore.Name() != "my_restore" {
-		t.Errorf("expected name 'my_restore', got %q", restore.Name())
+	if restore.Identity().Name() != "my_restore" {
+		t.Errorf("expected name 'my_restore', got %q", restore.Identity().Name())
 	}
 }
 

@@ -270,8 +270,8 @@ func TestSeekBuilders(t *testing.T) {
 	if seek.temperature != 0.7 {
 		t.Errorf("expected temperature 0.7, got %f", seek.temperature)
 	}
-	if seek.Name() != "key" {
-		t.Errorf("expected name 'key', got %s", seek.Name())
+	if seek.Identity().Name() != "key" {
+		t.Errorf("expected name 'key', got %s", seek.Identity().Name())
 	}
 	if seek.Close() != nil {
 		t.Error("expected Close to return nil")

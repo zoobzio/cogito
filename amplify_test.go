@@ -287,8 +287,8 @@ func TestAmplifyWithMaxIterationsSetToZero(t *testing.T) {
 func TestAmplifyName(t *testing.T) {
 	amplify := NewAmplify("my_refinement", "source", "prompt", "criteria", 3)
 
-	if amplify.Name() != "my_refinement" {
-		t.Errorf("expected name 'my_refinement', got %q", amplify.Name())
+	if amplify.Identity().Name() != "my_refinement" {
+		t.Errorf("expected name 'my_refinement', got %q", amplify.Identity().Name())
 	}
 }
 

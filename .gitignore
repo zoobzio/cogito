@@ -1,0 +1,44 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary and output
+*.test
+*.out
+
+# Coverage files
+coverage.*
+
+# Dependency directories
+vendor/
+
+# Build artifacts
+dist/
+.dist/
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db
+
+# Go workspace
+go.work
+go.work.sum
+
+# Profiling
+*.prof
+*.pprof

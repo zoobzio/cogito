@@ -12,6 +12,7 @@ import (
 // Truncate is a session management primitive that implements pipz.Chainable[*Thought].
 // It removes messages from the session without LLM involvement, using a sliding window approach.
 type Truncate struct {
+	identity  pipz.Identity
 	key       string
 	keepFirst int // Number of messages to keep from the start (e.g., system prompt)
 	keepLast  int // Number of recent messages to keep
@@ -33,6 +34,7 @@ type Truncate struct {
 //	result, _ := truncate.Process(ctx, thought)
 func NewTruncate(key string) *Truncate {
 	return &Truncate{
+		identity:  pipz.NewIdentity(key, "Session truncation primitive"),
 		key:       key,
 		keepFirst: 1,  // Default: keep system prompt
 		keepLast:  10, // Default: keep last 10 messages
@@ -100,9 +102,14 @@ func (tr *Truncate) emitFailed(ctx context.Context, t *Thought, start time.Time,
 	)
 }
 
-// Name implements pipz.Chainable[*Thought].
-func (tr *Truncate) Name() pipz.Name {
-	return pipz.Name(tr.key)
+// Identity implements pipz.Chainable[*Thought].
+func (tr *Truncate) Identity() pipz.Identity {
+	return tr.identity
+}
+
+// Schema implements pipz.Chainable[*Thought].
+func (tr *Truncate) Schema() pipz.Node {
+	return pipz.Node{Identity: tr.identity, Type: "truncate"}
 }
 
 // Close implements pipz.Chainable[*Thought].

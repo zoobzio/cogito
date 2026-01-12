@@ -14,6 +14,7 @@ type Reset struct {
 	key            string
 	systemMessage  string // Optional system message for the new session
 	preserveNoteAs string // Optional: copy a note's content as the system message
+	identity       pipz.Identity
 }
 
 // NewReset creates a new session reset primitive.
@@ -32,7 +33,8 @@ type Reset struct {
 //	    WithPreserveNote("session_compress")  // Use compression summary as new context
 func NewReset(key string) *Reset {
 	return &Reset{
-		key: key,
+		key:      key,
+		identity: pipz.NewIdentity(key, "Session reset primitive"),
 	}
 }
 
@@ -82,9 +84,14 @@ func (r *Reset) Process(ctx context.Context, t *Thought) (*Thought, error) {
 	return t, nil
 }
 
-// Name implements pipz.Chainable[*Thought].
-func (r *Reset) Name() pipz.Name {
-	return pipz.Name(r.key)
+// Identity implements pipz.Chainable[*Thought].
+func (r *Reset) Identity() pipz.Identity {
+	return r.identity
+}
+
+// Schema implements pipz.Chainable[*Thought].
+func (r *Reset) Schema() pipz.Node {
+	return pipz.Node{Identity: r.identity, Type: "reset"}
 }
 
 // Close implements pipz.Chainable[*Thought].

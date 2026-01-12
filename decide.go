@@ -14,6 +14,7 @@ import (
 // Decide is a binary decision primitive that implements pipz.Chainable[*Thought].
 // It asks the LLM a yes/no question and stores the full response for typed retrieval.
 type Decide struct {
+	identity                 pipz.Identity
 	key                      string
 	question                 string
 	summaryKey               string
@@ -42,6 +43,7 @@ type Decide struct {
 //	fmt.Println(resp.Decision, resp.Confidence, resp.Reasoning)
 func NewDecide(key, question string) *Decide {
 	return &Decide{
+		identity:         pipz.NewIdentity(key, "Binary decision primitive"),
 		key:              key,
 		question:         question,
 		useIntrospection: DefaultIntrospection,
@@ -67,7 +69,7 @@ func (d *Decide) Process(ctx context.Context, t *Thought) (*Thought, error) {
 
 	// Get unpublished notes
 	unpublished := t.GetUnpublishedNotes()
-	context := RenderNotesToContext(unpublished)
+	noteContext := RenderNotesToContext(unpublished)
 
 	// Emit step started
 	capitan.Emit(ctx, StepStarted,
@@ -87,7 +89,7 @@ func (d *Decide) Process(ctx context.Context, t *Thought) (*Thought, error) {
 	// PHASE 1: REASONING - Binary decision
 	binaryResponse, err := binarySynapse.FireWithInput(ctx, t.Session, zyn.BinaryInput{
 		Subject:     d.question,
-		Context:     context,
+		Context:     noteContext,
 		Temperature: reasoningTemp,
 	})
 	if err != nil {
@@ -132,44 +134,13 @@ func (d *Decide) Process(ctx context.Context, t *Thought) (*Thought, error) {
 
 // runIntrospection executes the transform synapse for semantic summary.
 func (d *Decide) runIntrospection(ctx context.Context, t *Thought, resp zyn.BinaryResponse, originalNotes []Note, provider Provider) error {
-	transformSynapse, err := zyn.Transform(
-		"Synthesize decision into context for next reasoning step",
-		provider,
-	)
-	if err != nil {
-		return fmt.Errorf("decide: failed to create transform synapse: %w", err)
-	}
-
-	introspectionInput := d.buildIntrospectionInput(resp, originalNotes)
-
-	// Determine introspection temperature
-	introspectionTemp := DefaultIntrospectionTemperature
-	if d.introspectionTemperature != 0 {
-		introspectionTemp = d.introspectionTemperature
-	}
-	introspectionInput.Temperature = introspectionTemp
-
-	summary, err := transformSynapse.FireWithInput(ctx, t.Session, introspectionInput)
-	if err != nil {
-		return fmt.Errorf("decide: transform synapse execution failed: %w", err)
-	}
-
-	// Determine summary key
-	summaryKey := d.summaryKey
-	if summaryKey == "" {
-		summaryKey = d.key + "_summary"
-	}
-	if err := t.SetContent(ctx, summaryKey, summary, "decide-introspection"); err != nil {
-		return fmt.Errorf("decide: failed to persist introspection note: %w", err)
-	}
-
-	capitan.Emit(ctx, IntrospectionCompleted,
-		FieldTraceID.Field(t.TraceID),
-		FieldStepType.Field("decide"),
-		FieldContextSize.Field(len(summary)),
-	)
-
-	return nil
+	return runIntrospection(ctx, t, provider, d.buildIntrospectionInput(resp, originalNotes), introspectionConfig{
+		stepType:                 "decide",
+		key:                      d.key,
+		summaryKey:               d.summaryKey,
+		introspectionTemperature: d.introspectionTemperature,
+		synapsePrompt:            "Synthesize decision into context for next reasoning step",
+	})
 }
 
 // buildIntrospectionInput formats decision for the transform synapse.
@@ -201,9 +172,14 @@ func (d *Decide) emitFailed(ctx context.Context, t *Thought, start time.Time, er
 	)
 }
 
-// Name implements pipz.Chainable[*Thought].
-func (d *Decide) Name() pipz.Name {
-	return pipz.Name(d.key)
+// Identity implements pipz.Chainable[*Thought].
+func (d *Decide) Identity() pipz.Identity {
+	return d.identity
+}
+
+// Schema implements pipz.Chainable[*Thought].
+func (d *Decide) Schema() pipz.Node {
+	return pipz.Node{Identity: d.identity, Type: "decide"}
 }
 
 // Close implements pipz.Chainable[*Thought].

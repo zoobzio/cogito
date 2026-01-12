@@ -18,6 +18,7 @@ import (
 type Restore struct {
 	key       string
 	thoughtID string
+	identity  pipz.Identity
 }
 
 // NewRestore creates a new restore primitive.
@@ -48,6 +49,7 @@ func NewRestore(key, thoughtID string) *Restore {
 	return &Restore{
 		key:       key,
 		thoughtID: thoughtID,
+		identity:  pipz.NewIdentity(key, "Thought restore primitive"),
 	}
 }
 
@@ -149,9 +151,14 @@ func (r *Restore) Process(ctx context.Context, t *Thought) (*Thought, error) {
 	return newThought, nil
 }
 
-// Name implements pipz.Chainable[*Thought].
-func (r *Restore) Name() pipz.Name {
-	return pipz.Name(r.key)
+// Identity implements pipz.Chainable[*Thought].
+func (r *Restore) Identity() pipz.Identity {
+	return r.identity
+}
+
+// Schema implements pipz.Chainable[*Thought].
+func (r *Restore) Schema() pipz.Node {
+	return pipz.Node{Identity: r.identity, Type: "restore"}
 }
 
 // Close implements pipz.Chainable[*Thought].

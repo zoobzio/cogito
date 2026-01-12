@@ -172,8 +172,8 @@ func TestResetEmptySession(t *testing.T) {
 func TestResetChainable(t *testing.T) {
 	reset := NewReset("test_reset")
 
-	if reset.Name() != "test_reset" {
-		t.Errorf("expected name 'test_reset', got %q", reset.Name())
+	if reset.Identity().Name() != "test_reset" {
+		t.Errorf("expected name 'test_reset', got %q", reset.Identity().Name())
 	}
 
 	if err := reset.Close(); err != nil {
